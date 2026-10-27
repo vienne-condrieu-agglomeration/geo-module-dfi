@@ -11,6 +11,10 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+### Modifié
+
+- La **présentation du module** (`README.md`) montre une capture : le choix de la parcelle et son graphe de filiation
+
 ## [0.3.1] — 2026-10-26
 
 ### Modifié

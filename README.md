@@ -12,6 +12,8 @@ référence cadastrale IDU de 14 caractères, par exemple `38544000BI0498`, rest
 lotissement, remaniement…) indique sa date et la nature du document (arpentage, croquis de conservation…). Un clic sur une
 parcelle ou une opération en donne le détail et permet de suivre la filiation d'une autre parcelle du graphe.
 
+![Onglet du module : listes Commune, Section et Numéro, puis filiation de la parcelle AK 22 de Saint-Georges-d'Oléron : division en cinq parcelles (2003), réunion avec AK 346 en AK 375 (2003), puis division de AK 375 en cinq parcelles (2004)](docs/graphe.png)
+
 Les données sont des **fichiers JSON statiques, un par commune**, préparés par
 [integrator-dfi](https://github.com/vienne-condrieu-agglomeration/geo-community-integrator-dfi) à partir du jeu
 [« Documents de filiation informatisés (DFI) des parcelles »](https://www.data.gouv.fr/datasets/documents-de-filiation-informatises-dfi-des-parcelles)
