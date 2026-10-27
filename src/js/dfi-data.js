@@ -318,6 +318,50 @@ export function buildGraph(lookup, key, options) {
     };
 }
 
+/**
+ * Lignée d'un nœud du graphe : ses ancêtres (en remontant les arêtes) et ses descendants (en les descendant), lui compris.
+ * Les sœurs et co-mères n'en font pas partie : c'est le chemin d'origine et de devenir à mettre en évidence.
+ * Retourne un objet id -> true.
+ */
+export function lineageOf(edges, id) {
+    var up = {};
+    var down = {};
+    edges.forEach(function (e) {
+        (up[e.to] = up[e.to] || []).push(e.from);
+        (down[e.from] = down[e.from] || []).push(e.to);
+    });
+    var seen = {};
+    seen[id] = true;
+    [up, down].forEach(function (next) {
+        var stack = [id];
+        var visited = {};
+        while (stack.length) {
+            (next[stack.pop()] || []).forEach(function (n) {
+                if (!visited[n]) { visited[n] = true; seen[n] = true; stack.push(n); }
+            });
+        }
+    });
+    return seen;
+}
+
+/** Texte de l'infobulle d'un nœud du graphe (survol) : l'essentiel, sans cliquer. */
+export function nodeTooltip(lookup, node) {
+    var lines;
+    if (node.type === 'parcel') {
+        var s = parcelSummary(lookup, node.key);
+        lines = ['Parcelle ' + parcelLabel(node.key)]
+            .concat(s.origin.map(function (l) { return 'Origine : ' + l.kind.toLowerCase() + ' le ' + l.dateLabel; }))
+            .concat(s.future.length
+                ? s.future.map(function (l) { return 'Devenir : ' + l.kind.toLowerCase() + ' le ' + l.dateLabel; })
+                : ['Devenir : aucune évolution postérieure connue']);
+    } else {
+        var d = describeLot(lookup.lots[node.index]);
+        lines = [d.kind + ' — ' + d.natureLabel, d.dateLabel + ', DFI n° ' + d.dfi,
+                 d.mothers.length + ' mère(s), ' + d.daughters.length + ' fille(s)' + (node.hidden ? ', dont ' + node.hidden + ' non affichée(s)' : '')];
+    }
+    return lines.concat(['Cliquer pour le détail']).join('\n');
+}
+
 /** Synthèse en français, comme dans l'outil de Romain : origine (lots où la parcelle est fille) et devenir. */
 export function parcelSummary(lookup, key) {
     return {
@@ -398,6 +442,38 @@ export function layoutGraph(graph, labelOf, options) {
         width: maxW + 2 * o.margin,
         height: rows.length * o.nodeH + (rows.length - 1) * o.gapY + 2 * o.margin
     };
+}
+
+// ─── Zoom et déplacement du graphe ───────────────────────────────────────────────────────────────────
+// Une vue est { cx, cy, scale } : le point du graphe au centre de la zone d'affichage et l'échelle (1 = taille réelle).
+// Elle ne dépend pas de la taille de la zone : passer en plein écran garde le même centre et la même échelle.
+
+/** Vue qui montre tout le graphe (width × height) dans une zone cw × ch, sans agrandir au-delà de la taille réelle. */
+export function fitView(width, height, cw, ch) {
+    return { cx: width / 2, cy: height / 2, scale: Math.min(1, cw / width, ch / height) };
+}
+
+/**
+ * Ramène la vue dans l'emprise du graphe, pour ne jamais se perdre dans le vide : la zone affichée ne dépasse pas les bords
+ * du graphe ; dans le sens où le graphe est plus petit que la zone, il reste centré.
+ */
+export function clampView(view, width, height, cw, ch) {
+    function clamp(c, size, visible) { return size <= visible ? size / 2 : Math.min(size - visible / 2, Math.max(visible / 2, c)); }
+    return { cx: clamp(view.cx, width, cw / view.scale), cy: clamp(view.cy, height, ch / view.scale), scale: view.scale };
+}
+
+/** Zoom d'un facteur `factor` (> 1 : rapproche) qui garde fixe à l'écran le point (px, py) du graphe ; échelle bornée. */
+export function zoomView(view, factor, px, py, minScale, maxScale) {
+    var scale = Math.min(maxScale, Math.max(minScale, view.scale * factor));
+    var k = view.scale / scale;
+    return { cx: px - (px - view.cx) * k, cy: py - (py - view.cy) * k, scale: scale };
+}
+
+/** Attribut `viewBox` du SVG pour une vue dans une zone cw × ch. */
+export function viewBoxOf(view, cw, ch) {
+    var w = cw / view.scale;
+    var h = ch / view.scale;
+    return [view.cx - w / 2, view.cy - h / 2, w, h].join(' ');
 }
 
 // ─── Localisation d'une parcelle (API Carto Cadastre de l'IGN) ───────────────────────────────────────
@@ -499,6 +575,55 @@ export function loadParcel(fetchFn, base, p) {
     }, function () {
         throw new DfiError('network', 'Service cadastral inaccessible (réseau ou accès bloqué) : ' + url);
     }).then(function (json) { return parseCadastre(json, p.insee + (p.prefix || '000') + p.section + p.number); });
+}
+
+// ─── Toute la filiation sur la carte ─────────────────────────────────────────────────────────────────
+
+export var MAX_MAP_PARCELS = 40;     // requêtes à l'API Carto pour une filiation (débit raisonnable)
+export var MAP_CONCURRENCY = 3;      // requêtes simultanées au plus (constaté : l'IGN répond 429 au-delà)
+
+/**
+ * Parcelles du graphe à chercher sur la carte. Une parcelle mère d'un lot dont elle n'est pas aussi fille a été divisée,
+ * réunie ou renumérotée : elle n'a plus de contour au cadastre actuel, on ne l'interroge pas (`gone`). Les autres sont
+ * classées : la parcelle cherchée, ses descendantes (niveau > 0) et les autres parcelles liées (sœurs, co-mères encore
+ * existantes). Au-delà de `max`, les suivantes ne sont pas cherchées (`skipped`) ; les nœuds du graphe sont dans l'ordre
+ * de proximité avec la parcelle cherchée.
+ */
+export function mapTargets(graph, lookup, max) {
+    var out = { query: [], gone: [], skipped: [] };
+    graph.nodes.forEach(function (n) {
+        if (n.type !== 'parcel') { return; }
+        var replaced = (lookup.asMother[n.key] || []).some(function (i) { return lookup.lots[i][5].indexOf(n.key) < 0; });
+        if (replaced) { out.gone.push(n.key); return; }
+        if (out.query.length >= max) { out.skipped.push(n.key); return; }
+        out.query.push({ key: n.key, role: n.key === graph.key ? 'searched' : n.level > 0 ? 'descendant' : 'related' });
+    });
+    return out;
+}
+
+/** Applique `fn` (qui renvoie une promesse) à chaque élément, `limit` à la fois ; résultats dans l'ordre : { value } ou { error }. */
+export function mapLimit(items, limit, fn) {
+    var results = new Array(items.length);
+    var next = 0;
+    function worker() {
+        if (next >= items.length) { return Promise.resolve(); }
+        var i = next++;
+        return Promise.resolve().then(function () { return fn(items[i], i); })
+            .then(function (value) { results[i] = { value: value }; }, function (error) { results[i] = { error: error }; })
+            .then(worker);
+    }
+    var workers = [];
+    for (var w = 0; w < Math.min(limit, items.length); w++) { workers.push(worker()); }
+    return Promise.all(workers).then(function () { return results; });
+}
+
+/** Emprise commune à plusieurs emprises { minX, minY, maxX, maxY }, ou null pour une liste vide. */
+export function mergeBbox(list) {
+    return list.reduce(function (acc, b) {
+        if (!acc) { return { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY }; }
+        return { minX: Math.min(acc.minX, b.minX), minY: Math.min(acc.minY, b.minY),
+                 maxX: Math.max(acc.maxX, b.maxX), maxY: Math.max(acc.maxY, b.maxY) };
+    }, null);
 }
 
 /** « 14 000 m² » ou « 1,4 ha » à partir d'une contenance en mètres carrés. */

@@ -7,10 +7,15 @@ ce qu'elle est devenue, sous forme de graphe (parcelles mères → opération �
 
 ## Fonctionnement
 
-Onglet de la **barre latérale droite**, avec une **barre d'outils fixe** (localiser et effacer le repérage, **Nouveautés**, **plein écran** : le panneau prend toute la largeur, Échap pour en sortir ; seul le contenu défile en dessous) : on choisit la parcelle par **commune → section → numéro** (listes liées ; les communes sont celles déclarées dans les options du module, un message avertit si rien n'est déclaré ; la
+Onglet de la **barre latérale droite**, avec une **barre d'outils fixe** (localiser et effacer le repérage, **Nouveautés**, **plein écran** : le panneau prend toute la largeur, Échap pour en sortir ; **visite guidée** « ? » ; seul le contenu défile en dessous) : on choisit la parcelle par **commune → section → numéro** (listes liées ; les communes sont celles déclarées dans les options du module, un message avertit si rien n'est déclaré ; la
 référence cadastrale IDU de 14 caractères, par exemple `38544000BI0498`, reste saisissable en repli) ; le module affiche le graphe de ses ancêtres et de ses descendants. Chaque opération (division, réunion,
-lotissement, remaniement…) indique sa date et la nature du document (arpentage, croquis de conservation…). Un clic sur une
-parcelle ou une opération en donne le détail et permet de suivre la filiation d'une autre parcelle du graphe.
+lotissement, remaniement…) indique sa date et la nature du document (arpentage, croquis de conservation…). Le survol d'un
+nœud en donne l'essentiel (infobulle) ; un clic sur une parcelle ou une opération en donne le détail (dans un volet à droite du
+graphe en plein écran), met en évidence sa lignée (origine et devenir) et permet de suivre la filiation d'une autre parcelle du
+graphe. Le graphe se
+manipule comme une carte : molette ou boutons +/− pour zoomer, glisser pour se déplacer (pincement et glisser au doigt sur
+tablette ; flèches, + , − et 0 au clavier), bouton « Voir tout le graphe » pour revenir à l'ensemble. Le déplacement
+reste dans l'emprise du graphe.
 
 Les données sont des **fichiers JSON statiques, un par commune**, préparés par
 [integrator-dfi](https://github.com/vienne-condrieu-agglomeration/geo-community-integrator-dfi) à partir du jeu
@@ -29,6 +34,20 @@ de serveur ni de base de données. Il lit d'abord `index.json` et **refuse un fo
 | Communes du territoire | Codes INSEE des communes proposées dans la liste (à renseigner : vide, la recherche par commune est désactivée et un message avertit) |
 | Bouton « Localiser sur la carte », adresse du service cadastral | Active la localisation (oui par défaut) ; service qui renvoie le contour d'une parcelle (par défaut l'API Carto de l'IGN) |
 | Nom et largeur de l'onglet | Libellé de l'onglet ; part de l'écran occupée par le panneau |
+| Visite guidée au premier lancement | Bulle sur l'onglet au chargement de l'application, puis visite à la première ouverture du panneau (oui par défaut) ; le bouton « ? » relance toujours la visite |
+
+## Visite guidée
+
+Une visite en sept étapes (bibliothèque [Driver.js](https://driverjs.com/), MIT, comme le module Panoramax) présente la recherche, la
+synthèse, la lecture du graphe et ses couleurs, le clic sur un nœud, le zoom, la localisation sur la carte et la barre d'outils. Trois
+étapes avancent sur le vrai geste (« ✓ Bien joué ! ») : chercher une parcelle, cliquer sur un nœud, zoomer ou déplacer le graphe ;
+« Suivant » les passe. La visite est **non modale** : le panneau reste utilisable pendant qu'elle se déroule.
+
+Tant qu'elle n'a pas été vue, une **bulle sur l'onglet** du module le signale au chargement de l'application (« Plus tard » la ferme jusqu'au
+prochain chargement, « Ne plus afficher » la fait taire, ouvrir l'onglet la ferme). La visite démarre ensuite à la première ouverture du panneau ; « Terminer » ou la croix la mémorisent comme vue, « Ne plus afficher » aussi, dans le
+navigateur (clé `localStorage` `geo-dfi-tour`, valeur `v1:done` ou `v1:never`). Fermer le panneau en cours de visite n'enregistre rien.
+Pour la revoir d'elle-même : `localStorage.removeItem('geo-dfi-tour')` dans la console, puis recharger. Passer `_TOUR_VERSION` à `v2` dans
+`extension.js` la réaffiche une fois pour tout le monde après une évolution notable.
 
 Zones du gabarit : le module n'est proposé que pour la barre latérale droite (`widget.side.pro`, `widget.side`), jamais pour l'ensemble du gabarit
 (`global.pro`). Constaté sur GEO 4.5.0 : la zone « Lanceur de fonctionnalités » (bandeau de gauche) n'accepte pas le module, et un onglet de type
@@ -42,7 +61,13 @@ Le bouton « Localiser sur la carte » (sur la parcelle cherchée et sur chaque 
 préfixe de section de la parcelle. Il zoome sur la parcelle (par la vue OpenLayers native, avec un recouvrement du panneau mesuré sur la page), la centre dans la partie de la carte que le panneau ne recouvre pas, et dessine son
 contour sur une couche temporaire (« Effacer le repérage », ou fermeture du panneau, la retire).
 
-- **Confidentialité** : le service de l'IGN voit l'adresse IP du poste et la référence de la parcelle demandée (données publiques). Le bouton se
+Le bouton « Localiser toute la filiation sur la carte » (sous la synthèse) dessine en une fois les parcelles du graphe qui existent encore
+au cadastre actuel, colorées selon leur place : la parcelle cherchée (orange), ses descendantes (vert), les autres parcelles liées (bleu :
+sœurs, parcelles d'origine encore existantes). Une légende dans le panneau liste aussi les parcelles qui ne peuvent pas être dessinées.
+Les parcelles remplacées (mères d'une opération) ne sont pas demandées au service : elles n'y ont plus de contour. Au plus 40 parcelles sont
+demandées, 3 à la fois.
+
+- **Confidentialité** : le service de l'IGN voit l'adresse IP du poste et la référence des parcelles demandées (données publiques). Les boutons se
   désactive dans les réglages ; l'adresse du service peut pointer vers un miroir interne.
 - **Disponibilité** : si le service n'est pas joignable (réseau, filtrage), un message l'indique ; le graphe reste utilisable.
 - **Parcelles disparues** : une parcelle divisée, réunie ou renumérotée n'existe plus au cadastre actuel : elle est signalée, pas localisée.
@@ -77,4 +102,4 @@ est dans `src/js/extension.js`.
 
 - Le module lit les données avec `fetch` (et non `$http`, dont les intercepteurs de GEO pourraient joindre des en-têtes d'identification) :
   les données doivent être servies avec `access-control-allow-origin: *` (c'est le cas de GitHub Pages).
-- Un graphe très ramifié (plusieurs centaines de parcelles liées) est large : défiler dans le cadre, ou passer en plein écran.
+- Un graphe très ramifié (plusieurs centaines de parcelles liées) est large : zoomer et se déplacer dans le cadre (« Voir tout le graphe » pour l'ensemble), ou passer en plein écran.

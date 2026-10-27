@@ -91,6 +91,15 @@
           "maxValue": 80,
           "step": 5,
           "defaultValue": 45
+        },
+        {
+          "@type": "com.bg.functionality.canvas.configuration.PropertyConfigurationElement",
+          "name": "Afficher la visite guidée au premier lancement",
+          "description": "Affiche une bulle sur l'onglet du module à l'ouverture de l'application, puis lance une visite guidée interactive la première fois que l'utilisateur ouvre le panneau. Il peut la passer ou choisir de ne plus la voir (mémorisé dans le navigateur). La visite reste accessible avec le bouton « ? » de la barre d'outils.",
+          "key": "showTourOnStart",
+          "required": false,
+          "type": "BOOLEAN",
+          "defaultValue": true
         }
       ]
     }

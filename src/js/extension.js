@@ -7,6 +7,8 @@
  * La logique sans GEO ni Angular est dans dfi-data.js (testée sous Node).
  */
 import angular from 'angular';
+import { driver } from 'driver.js';
+import 'driver.js/dist/driver.css';
 import pluginConf from '../plugin.geoext.json';
 
 import * as dfi from './dfi-data.js';
@@ -38,6 +40,7 @@ angular
         var _markLayer    = null;      // couche OpenLayers du contour de la parcelle repérée
         var _markMap      = null;
         var _panelEl      = null;      // élément du panneau, pour mesurer ce qu'il recouvre de la carte
+        var _showTourOnStart = true;   // visite guidée à la première ouverture du panneau
         var _registered   = false;
         var _widgetId     = null;
         var _currentScope = null;
@@ -70,8 +73,21 @@ angular
             // « graph-hub » (https://lucide.dev/icons/graph-hub) : un nœud et ses enfants, comme une division de parcelle
             graphHub: _lucideSvg('<circle cx="12" cy="7" r="4"/><circle cx="4" cy="19" r="2"/><circle cx="12" cy="19" r="2"/>'
                                + '<circle cx="20" cy="19" r="2"/><path d="M8 7a4 4 0 0 0-4 4v6"/><path d="M12 11v6"/>'
-                               + '<path d="M16 7a4 4 0 0 1 4 4v6"/>')
+                               + '<path d="M16 7a4 4 0 0 1 4 4v6"/>'),
+            // « zoom-in », « zoom-out » et « scan » (https://lucide.dev/icons/zoom-in, …/zoom-out, …/scan) : zoom du graphe
+            zoomIn: _lucideSvg('<circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/>'
+                             + '<line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/>'),
+            zoomOut: _lucideSvg('<circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/>'
+                              + '<line x1="8" x2="14" y1="11" y2="11"/>'),
+            scan: _lucideSvg('<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>'
+                           + '<path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>'),
+            // « circle-question-mark » (https://lucide.dev/icons/circle-question-mark) : visite guidée
+            circleQuestion: _lucideSvg('<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>'
+                                 + '<path d="M12 17h.01"/>')
         };
+        // GEO n'a pas « graph-hub » parmi ses icônes natives : l'onglet l'affiche en masque CSS, à la couleur du texte
+        var _TAB_ICON_MASK = 'url("data:image/svg+xml,'
+                           + encodeURIComponent(_ICONS.graphHub.replace('currentColor', '#000')) + '")';
 
         geoApplication.executeWhenInitialized(function () {
             var conf = geoApplication.getConfigurationByExtensionKey(pluginConf.name);
@@ -90,6 +106,7 @@ angular
             _toolName     = String(props.toolName || '').trim() || _toolName;
             _locateEnabled = props.locateEnabled !== false && props.locateEnabled !== 'false';
             _cadastreUrl   = String(props.cadastreApiUrl || '').trim() || dfi.DEFAULT_CADASTRE_URL;
+            _showTourOnStart = props.showTourOnStart !== false && props.showTourOnStart !== 'false';
             var width     = parseFloat(props.panelWidth);
             _panelWidthPct = width >= 25 && width <= 80 ? width : _panelWidthPct;
             _panelWidthCfg = _panelWidthPct;
@@ -103,6 +120,7 @@ angular
                 _registered = true;
                 _injectStyles();
                 _registerWidget();
+                _startTeaser(0);
             }
         });
 
@@ -115,7 +133,7 @@ angular
                 key:          pluginConf.name,
                 extensionKey: pluginConf.name,
                 name:         _toolName,
-                icon:         'icon_search',          // icône native GEO (à remplacer par une icône de filiation)
+                icon:         'geo-dfi-tab-icon',     // classe posée par GEO sur l'onglet (.launcher-icon), dessinée dans _injectStyles
                 active:       false,
                 widthPolicy:  'custom',
                 enable:       function () { return true; },
@@ -203,6 +221,8 @@ angular
                 '        <span ng-if="!isFullscreen">' + _ICONS.maximize + '</span>',
                 '        <span ng-if="isFullscreen">' + _ICONS.minimize + '</span>',
                 '      </button>',
+                '      <button type="button" class="geo-dfi-iconbtn geo-dfi-help-btn" ng-click="startTour()" title="Visite guidée"',
+                '              aria-label="Visite guidée">' + _ICONS.circleQuestion + '</button>',
                 '    </div>',
                 '  </div>',
                 '  <div class="geo-dfi-body">',
@@ -242,6 +262,17 @@ angular
                 '  <div class="geo-dfi-result" ng-if="state.result">',
                 '    <div class="geo-dfi-parcel">{{ state.result.label }} <span class="geo-dfi-idu">{{ state.result.idu }}</span></div>',
                 '    <div class="geo-dfi-msg" ng-if="state.locateMessage">{{ state.locateMessage }}</div>',
+                '    <div class="geo-dfi-msg geo-dfi-maplegend" ng-if="state.mapSummary">',
+                '      <div><span class="geo-dfi-swatch geo-dfi-swatch--searched"></span>Parcelle cherchée',
+                '        <span class="geo-dfi-swatch geo-dfi-swatch--descendant"></span>Descendantes',
+                '        <span class="geo-dfi-swatch geo-dfi-swatch--related"></span>Autres parcelles liées</div>',
+                '      <div ng-if="state.mapSummary.gone.length">Disparues du cadastre actuel, sans contour : {{ state.mapSummary.gone.join(\', \') }}.</div>',
+                '      <div ng-if="state.mapSummary.missing.length">Introuvables au cadastre actuel : {{ state.mapSummary.missing.join(\', \') }}.</div>',
+                '      <div ng-if="state.mapSummary.skipped.length">Non cherchées (au-delà de {{ state.mapSummary.max }} parcelles) : '
+                    + '{{ state.mapSummary.skipped.length }}.</div>',
+                '      <div ng-if="state.mapSummary.failed">Erreur du service cadastral pour {{ state.mapSummary.failed }} parcelle(s) '
+                    + '(voir la console du navigateur).</div>',
+                '    </div>',
                 '    <div class="geo-dfi-msg" ng-if="!state.result.hasHistory">Aucune filiation connue dans les DFI pour cette parcelle. ',
                 '      L\'historique informatisé commence vers 1988-1990 et les remembrements n\'y figurent pas.</div>',
                 '    <ul class="geo-dfi-summary" ng-if="state.result.hasHistory">',
@@ -249,8 +280,21 @@ angular
                 '      <li ng-repeat="t in state.result.futureText">{{ t }}</li>',
                 '      <li ng-if="!state.result.futureText.length">Devenir : aucune évolution postérieure connue dans les DFI.</li>',
                 '    </ul>',
+                '    <button type="button" class="geo-dfi-btn geo-dfi-locate-all" ng-if="locateEnabled && state.result.hasHistory" ng-click="locateAll()"',
+                '            ng-disabled="state.locating">Localiser toute la filiation sur la carte</button>',
                 '    <div class="geo-dfi-msg" ng-if="state.result.truncated">Graphe tronqué : trop de parcelles liées.</div>',
-                '    <div class="geo-dfi-graph" tabindex="-1"></div>',
+                '    <div class="geo-dfi-view">',
+                '    <div class="geo-dfi-graph-wrap">',
+                '      <div class="geo-dfi-graph" tabindex="-1"></div>',
+                '      <div class="geo-dfi-zoom" role="group" aria-label="Zoom du graphe">',
+                '        <button type="button" class="geo-dfi-iconbtn" ng-click="zoomGraph(1)" title="Zoomer (molette, +)" aria-label="Zoomer">'
+                    + _ICONS.zoomIn + '</button>',
+                '        <button type="button" class="geo-dfi-iconbtn" ng-click="zoomGraph(-1)" title="Dézoomer (molette, −)" aria-label="Dézoomer">'
+                    + _ICONS.zoomOut + '</button>',
+                '        <button type="button" class="geo-dfi-iconbtn" ng-click="fitGraph()" title="Voir tout le graphe (0)" aria-label="Voir tout le graphe">'
+                    + _ICONS.scan + '</button>',
+                '      </div>',
+                '    </div>',
                 '    <div class="geo-dfi-detail" ng-if="state.selected">',
                 '      <div class="geo-dfi-detail-title">{{ state.selected.title }}</div>',
                 '      <div ng-repeat="line in state.selected.lines">{{ line }}</div>',
@@ -265,6 +309,7 @@ angular
                 '      <button type="button" class="geo-dfi-btn" ng-if="state.selected.parcel && locateEnabled"',
                 '              ng-click="locate(state.selected.parcel)" ng-disabled="state.locating">Localiser sur la carte</button>',
                 '    </div>',
+                '    </div>',
                 '  </div>',
                 '  <div class="geo-dfi-foot">',
                 '    Source : DGFiP, Documents de filiation informatisés (DFI){{ source.dateLabel ? \', mise à jour du \' + source.dateLabel : \'\' }},',
@@ -278,6 +323,7 @@ angular
         function _buildController() {
             return ['$scope', '$element', '$timeout', function ($scope, $element, $timeout) {
                 _currentScope = $scope;
+                _cancelTeaser();   // panneau ouvert : l'accroche sur l'onglet a rempli son rôle
                 $scope.title     = _toolName;
                 $scope.isFullscreen = false;
                 $scope.locateEnabled = _locateEnabled;
@@ -290,8 +336,9 @@ angular
                 $scope.state     = {
                     idu: '', insee: '', section: '', numberText: '', listLoading: false,
                     loading: false, error: '', result: null, selected: null,
-                    locating: false, locateMessage: '', located: false
+                    locating: false, locateMessage: '', located: false, mapSummary: null
                 };
+                var _graph = null;
                 var _layout = null;
                 var _lookup = null;
                 var _selectedId = null;
@@ -302,12 +349,13 @@ angular
                 $scope.changelogTitle = 'Nouveautés du module' + (changelog.current ? ' (v' + changelog.current + ')' : '');
                 $scope.changelogNew   = function () { return changelog.hasNew(); };
                 $scope.openChangelog  = function () { changelog.open(); };
+                $scope.startTour      = function () { _startTour(); };
 
                 function _apply(fn) { $timeout(fn, 0); }   // les promesses natives sont hors du cycle Angular
 
                 $scope.search = function () {
                     var st = $scope.state;
-                    st.error = ''; st.locateMessage = ''; st.selected = null;
+                    st.error = ''; st.locateMessage = ''; st.selected = null; st.mapSummary = null;
                     var parsed = dfi.parseIdu(st.idu);
                     if (!parsed) {
                         st.result = null;
@@ -337,7 +385,7 @@ angular
                     _lookup = lookup;
                     st.loading = false;
                     _syncCascade(lookup, parsed);
-                    var graph = dfi.buildGraph(lookup, parsed.key);
+                    var graph = _graph = dfi.buildGraph(lookup, parsed.key);
                     var summary = dfi.parcelSummary(lookup, parsed.key);
                     st.result = {
                         parsed: parsed, idu: parsed.idu, label: dfi.parcelLabel(parsed.key), hasHistory: graph.hasHistory,
@@ -352,15 +400,20 @@ angular
                     });
                     _selectedId = 'p:' + parsed.key;
                     $timeout(_draw, 0);   // le conteneur est créé par ng-if au prochain cycle
+                    _tourNotify('search');
                 }
 
+                function _graphContainer() { return $element[0].querySelector('.geo-dfi-graph'); }
+
                 function _draw() {
-                    var container = $element[0].querySelector('.geo-dfi-graph');
+                    var container = _graphContainer();
                     if (!container || !_layout) { return; }
                     _renderGraph(container, _layout, _selectedId, 'p:' + $scope.state.result.parsed.key, function (node) {
                         _apply(function () { _select(node); });
-                    });
+                    }, function (node) { return dfi.nodeTooltip(_lookup, node); });
                 }
+                $scope.zoomGraph = function (direction) { _zoomBy(_graphContainer(), direction > 0 ? _ZOOM_STEP : 1 / _ZOOM_STEP); };
+                $scope.fitGraph = function () { _fitGraph(_graphContainer()); };
 
                 function _parcelInfo(key) {
                     var p = dfi.splitKey(key, _lookup.insee);
@@ -370,6 +423,7 @@ angular
 
                 function _select(node) {
                     _selectedId = node.id;
+                    _tourNotify('node');
                     var st = $scope.state;
                     if (node.type === 'parcel') {
                         var info = _parcelInfo(node.key);
@@ -389,7 +443,13 @@ angular
                             mothers: d.mothers.map(_parcelInfo), daughters: d.daughters.map(_parcelInfo)
                         };
                     }
-                    _draw();
+                    // Après le cycle Angular : la fiche existe, et en plein écran elle a pris sa place à côté du graphe
+                    $timeout(function () {
+                        _draw();
+                        var detail = $element[0].querySelector('.geo-dfi-detail');
+                        // Panneau étroit : la fiche est sous le graphe, on la fait venir dans la partie visible
+                        if (detail && !$scope.isFullscreen && detail.scrollIntoView) { detail.scrollIntoView({ block: 'nearest' }); }
+                    }, 0);
                 }
 
                 $scope.focusParcel = function (idu) { $scope.state.idu = idu; $scope.search(); };
@@ -465,7 +525,7 @@ angular
                 $scope.locate = function (p) {
                     var st = $scope.state;
                     var label = p.label || dfi.parcelLabel(p.key);
-                    st.locating = true; st.locateMessage = '';
+                    st.locating = true; st.locateMessage = ''; st.mapSummary = null;
                     dfi.loadParcel(_fetch, _cadastreUrl, p).then(function (res) {
                         _apply(function () {
                             st.locating = false;
@@ -474,25 +534,73 @@ angular
                                     + 'elle ne peut pas être localisée.';
                                 return;
                             }
-                            // En plein écran la carte est masquée : on en sort, puis on attend que le panneau ait retrouvé sa largeur
-                            // (setPanelSize se joue à 0, 100 et 300 ms) avant de mesurer ce qu'il recouvre.
-                            var wait = 0;
-                            if ($scope.isFullscreen) { _setFullscreen(false); wait = 450; }
-                            $timeout(function () {
-                                if (!_showOnMap(res)) {
+                            _whenMapVisible(function () {
+                                if (!_showOnMap([{ feature: res.feature, bbox: res.bbox, role: 'searched' }])) {
                                     st.locateMessage = "Parcelle trouvée, mais la carte n'a pas pu être déplacée (voir la console du navigateur).";
                                     return;
                                 }
                                 st.located = true;
                                 st.locateMessage = [label, res.commune, dfi.formatArea(res.contenance)].filter(Boolean).join(' · ') + ' : repérée sur la carte.';
-                            }, wait);
+                            });
                         });
                     }).catch(function (err) {
                         console.error('[geo-dfi] localisation :', err);
                         _apply(function () { st.locating = false; st.locateMessage = _locateError(err); });
                     });
                 };
-                $scope.clearLocation = function () { _clearHighlight(); $scope.state.located = false; $scope.state.locateMessage = ''; };
+
+                // Toute la filiation : les parcelles du graphe qui existent encore au cadastre, colorées selon leur place.
+                // Les parcelles remplacées (mères d'un lot) n'ont plus de contour : elles sont listées, pas cherchées.
+                $scope.locateAll = function () {
+                    var st = $scope.state;
+                    if (!_graph) { return; }
+                    var targets = dfi.mapTargets(_graph, _lookup, dfi.MAX_MAP_PARCELS);
+                    st.mapSummary = null;
+                    st.locating = true;
+                    st.locateMessage = 'Recherche des contours de ' + targets.query.length + ' parcelle(s) au cadastre actuel…';
+                    dfi.mapLimit(targets.query, dfi.MAP_CONCURRENCY, function (q) {
+                        return dfi.loadParcel(_fetch, _cadastreUrl, _parcelInfo(q.key));
+                    }).then(function (results) {
+                        _apply(function () {
+                            st.locating = false;
+                            var found = [];
+                            var summary = { gone: targets.gone.map(dfi.parcelLabel), missing: [], failed: 0,
+                                            skipped: targets.skipped, max: dfi.MAX_MAP_PARCELS };
+                            results.forEach(function (r, i) {
+                                var q = targets.query[i];
+                                if (r.error) { summary.failed++; console.error('[geo-dfi] localisation de ' + q.key + ' :', r.error); }
+                                else if (r.value) { found.push({ feature: r.value.feature, bbox: r.value.bbox, role: q.role }); }
+                                else { summary.missing.push(dfi.parcelLabel(q.key)); }
+                            });
+                            st.mapSummary = summary;
+                            if (!found.length) {
+                                st.locateMessage = 'Aucune parcelle de cette filiation n\'a de contour au cadastre actuel.';
+                                return;
+                            }
+                            _whenMapVisible(function () {
+                                if (!_showOnMap(found)) {
+                                    st.locateMessage = "Parcelles trouvées, mais la carte n'a pas pu être déplacée (voir la console du navigateur).";
+                                    return;
+                                }
+                                st.located = true;
+                                st.locateMessage = found.length + ' parcelle(s) de la filiation repérée(s) sur la carte.';
+                            });
+                        });
+                    });
+                };
+
+                // En plein écran la carte est masquée : on en sort, puis on attend que le panneau ait retrouvé sa largeur
+                // (setPanelSize se joue à 0, 100 et 300 ms) avant de mesurer ce qu'il recouvre.
+                function _whenMapVisible(fn) {
+                    var wait = 0;
+                    if ($scope.isFullscreen) { _setFullscreen(false); wait = 450; }
+                    $timeout(fn, wait);
+                }
+
+                $scope.clearLocation = function () {
+                    _clearHighlight();
+                    $scope.state.located = false; $scope.state.locateMessage = ''; $scope.state.mapSummary = null;
+                };
 
                 // Plein écran : le panneau prend toute la largeur ; les boutons de la carte (qui se replient et chevauchent
                 // ceux de gauche quand la carte est masquée) sont cachés tant que dure le plein écran. Échap en sort.
@@ -509,7 +617,14 @@ angular
                 }
                 $scope.toggleFullscreen = function () { _setFullscreen(!$scope.isFullscreen); };
 
+                // Première ouverture du panneau : la visite démarre d'elle-même (sauf si déjà vue ou coupée dans les réglages)
+                if (_tourPending()) {
+                    $timeout(function () { if (_currentScope === $scope) { _startTour(); } }, 500);
+                }
+
                 $scope.$on('$destroy', function () {
+                    // Panneau fermé en pleine visite : on l'arrête sans rien mémoriser, elle reprendra à la prochaine ouverture
+                    if (_tour && _tour.isActive()) { _tour.destroy(); }
                     if ($scope.isFullscreen) { _panelWidthPct = _panelWidthCfg; document.removeEventListener('keydown', _onEscape, true); }
                     document.body.classList.remove(_FULLSCREEN_BODY_CLASS);
                     _clearHighlight();
@@ -529,28 +644,38 @@ angular
             return el;
         }
 
-        function _renderGraph(container, layout, selectedId, searchedId, onSelect) {
-            var keepX = container.scrollLeft, keepY = container.scrollTop;
+        function _renderGraph(container, layout, selectedId, searchedId, onSelect, tipOf) {
             container.innerHTML = '';
+            // Zone d'affichage : toute la largeur, la hauteur du graphe dans la limite du max-height du conteneur
+            // (assez haute pour les boutons de zoom)
+            var maxH = parseFloat(window.getComputedStyle(container).maxHeight) || 400;
+            var cw = container.clientWidth || layout.width;
+            var ch = Math.min(Math.max(layout.height, _GRAPH_MIN_H), maxH);
             var svg = _svg('svg', {
-                width: layout.width, height: layout.height, viewBox: '0 0 ' + layout.width + ' ' + layout.height,
+                width: '100%', height: ch,
                 'class': 'geo-dfi-svg', role: 'group', 'aria-label': 'Graphe de filiation de la parcelle'
             }, container);
             var defs = _svg('defs', {}, svg);
             var marker = _svg('marker', { id: 'geo-dfi-arrow', viewBox: '0 0 10 10', refX: '9', refY: '5',
                 markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' }, defs);
             _svg('path', { d: 'M0,0 L10,5 L0,10 z', 'class': 'geo-dfi-arrowhead' }, marker);
+            // Lignée du nœud choisi (origine et devenir) en évidence ; le reste (sœurs, co-mères, autres branches) atténué
+            var lineage = dfi.lineageOf(layout.paths, selectedId);
             layout.paths.forEach(function (p) {
-                _svg('path', { d: p.d, 'class': 'geo-dfi-edge', 'marker-end': 'url(#geo-dfi-arrow)' }, svg);
+                var inLineage = lineage[p.from] && lineage[p.to];
+                _svg('path', { d: p.d, 'class': 'geo-dfi-edge geo-dfi-edge--' + (inLineage ? 'lineage' : 'dim'),
+                    'marker-end': 'url(#geo-dfi-arrow)' }, svg);
             });
             var searchedNode = null;
             layout.nodes.forEach(function (n) {
                 var cls = 'geo-dfi-node geo-dfi-node--' + n.type
                     + (n.id === searchedId ? ' geo-dfi-node--searched' : '')
                     + (n.type === 'parcel' && !n.explored ? ' geo-dfi-node--leaf' : '')
-                    + (n.id === selectedId ? ' geo-dfi-node--selected' : '');
+                    + (n.id === selectedId ? ' geo-dfi-node--selected' : '')
+                    + (lineage[n.id] ? '' : ' geo-dfi-node--dim');
                 var g = _svg('g', { 'class': cls, transform: 'translate(' + n.x + ',' + n.y + ')', tabindex: '0', role: 'button',
                     'aria-label': n.label }, svg);
+                _svg('title', {}, g).textContent = tipOf(n);   // infobulle native au survol
                 _svg('rect', { width: n.w, height: n.h, rx: n.type === 'lot' ? 14 : 4 }, g);
                 var t = _svg('text', { x: n.w / 2, y: n.h / 2 + 4, 'text-anchor': 'middle' }, g);
                 t.textContent = n.label;
@@ -560,10 +685,131 @@ angular
                 });
                 if (n.id === searchedId) { searchedNode = n; }
             });
-            if (searchedNode && !keepX && !keepY) {   // première image : la parcelle cherchée au centre de la zone visible
-                container.scrollLeft = Math.max(0, searchedNode.x + searchedNode.w / 2 - container.clientWidth / 2);
-                container.scrollTop  = Math.max(0, searchedNode.y + searchedNode.h / 2 - container.clientHeight / 2);
-            } else { container.scrollLeft = keepX; container.scrollTop = keepY; }
+
+            var z = container.geoDfiZoom;
+            if (!z) { z = container.geoDfiZoom = {}; _enablePanZoom(container, z); }
+            if (z.layout !== layout) {
+                // Nouveau graphe : tout le graphe s'il tient à la taille réelle, sinon la parcelle cherchée au centre
+                var fit = dfi.fitView(layout.width, layout.height, cw, ch);
+                z.view = fit.scale < 1 && searchedNode
+                    ? { cx: searchedNode.x + searchedNode.w / 2, cy: searchedNode.y + searchedNode.h / 2, scale: 1 }
+                    : fit;
+                z.layout = layout;
+            }
+            // Sinon (clic sur un nœud, plein écran) : même centre et même échelle, dans la nouvelle zone
+            z.svg = svg;
+            z.cw = cw;
+            z.ch = ch;
+            _applyView(z);
+        }
+
+        // ============================================================
+        // Zoom et déplacement du graphe
+        // ============================================================
+        // La vue { cx, cy, scale } (voir dfi-data.js) vit sur le conteneur, qui survit aux redessins du SVG.
+        var _ZOOM_STEP = 1.25;
+        var _ZOOM_MAX = 3;
+        var _DRAG_THRESHOLD = 4;   // px : en deçà, un appui reste un clic sur le nœud
+        var _KEY_PAN = 40;         // px par appui sur une flèche
+        var _GRAPH_MIN_H = 110;    // px : place pour les trois boutons de zoom
+
+        // Toute vue passe par ici : elle est d'abord ramenée dans l'emprise du graphe (déplacement, zoom, clavier, plein écran)
+        function _applyView(z) {
+            z.view = dfi.clampView(z.view, z.layout.width, z.layout.height, z.cw, z.ch);
+            z.svg.setAttribute('viewBox', dfi.viewBoxOf(z.view, z.cw, z.ch));
+        }
+
+        // Zoom d'un facteur autour d'un point de l'écran (par défaut le centre de la zone) ; dézoom limité à « tout le graphe »
+        function _zoomBy(container, factor, clientX, clientY) {
+            var z = container && container.geoDfiZoom;
+            if (!z || !z.svg) { return; }
+            var r = z.svg.getBoundingClientRect();
+            var px = clientX == null ? z.view.cx : z.view.cx + (clientX - r.left - z.cw / 2) / z.view.scale;
+            var py = clientY == null ? z.view.cy : z.view.cy + (clientY - r.top - z.ch / 2) / z.view.scale;
+            var minScale = dfi.fitView(z.layout.width, z.layout.height, z.cw, z.ch).scale;
+            z.view = dfi.zoomView(z.view, factor, px, py, minScale, _ZOOM_MAX);
+            _applyView(z);
+            _tourNotify('zoom');
+        }
+
+        function _fitGraph(container) {
+            var z = container && container.geoDfiZoom;
+            if (!z || !z.svg) { return; }
+            z.view = dfi.fitView(z.layout.width, z.layout.height, z.cw, z.ch);
+            _applyView(z);
+            _tourNotify('zoom');
+        }
+
+        // Déplacement de dx, dy pixels à l'écran (le graphe suit le pointeur)
+        function _panBy(z, dx, dy) {
+            z.view = { cx: z.view.cx - dx / z.view.scale, cy: z.view.cy - dy / z.view.scale, scale: z.view.scale };
+            _applyView(z);
+            _tourNotify('zoom');
+        }
+
+        // Écouteurs posés une seule fois par conteneur : molette, glisser, pincement à deux doigts, clavier.
+        function _enablePanZoom(container, z) {
+            var pointers = {};   // appuis en cours : pointerId -> dernière position
+            var start = null;
+
+            container.addEventListener('wheel', function (e) {
+                e.preventDefault();
+                _zoomBy(container, e.deltaY < 0 ? _ZOOM_STEP : 1 / _ZOOM_STEP, e.clientX, e.clientY);
+            }, { passive: false });
+
+            container.addEventListener('pointerdown', function (e) {
+                if (e.button !== 0) { return; }
+                pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+                start = { x: e.clientX, y: e.clientY };
+                z.dragged = false;
+            });
+
+            container.addEventListener('pointermove', function (e) {
+                var last = pointers[e.pointerId];
+                if (!last) { return; }
+                var ids = Object.keys(pointers);
+                if (ids.length === 2) {
+                    // Pincement : zoom du rapport des écarts entre les doigts, autour de leur milieu
+                    var other = pointers[ids[0] === String(e.pointerId) ? ids[1] : ids[0]];
+                    var before = Math.hypot(last.x - other.x, last.y - other.y);
+                    var after = Math.hypot(e.clientX - other.x, e.clientY - other.y);
+                    if (before > 0) { _zoomBy(container, after / before, (e.clientX + other.x) / 2, (e.clientY + other.y) / 2); }
+                    z.dragged = true;
+                } else if (ids.length === 1) {
+                    if (!z.dragged && Math.abs(e.clientX - start.x) + Math.abs(e.clientY - start.y) > _DRAG_THRESHOLD) {
+                        // Capture seulement une fois le glisser reconnu : posée dès l'appui, elle détournerait le clic du nœud
+                        z.dragged = true;
+                        container.setPointerCapture(e.pointerId);
+                        container.classList.add('geo-dfi-graph--dragging');
+                    }
+                    if (z.dragged) { _panBy(z, e.clientX - last.x, e.clientY - last.y); }
+                }
+                pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+            });
+
+            function end(e) {
+                delete pointers[e.pointerId];
+                container.classList.remove('geo-dfi-graph--dragging');
+            }
+            container.addEventListener('pointerup', end);
+            container.addEventListener('pointercancel', end);
+
+            // Un glisser ne vaut pas un clic sur le nœud où il a commencé
+            container.addEventListener('click', function (e) {
+                if (z.dragged) { e.stopPropagation(); z.dragged = false; }
+            }, true);
+
+            // Clavier, quand un nœud du graphe a le focus : flèches pour se déplacer, + et − pour zoomer, 0 pour tout voir
+            var moves = { ArrowLeft: [_KEY_PAN, 0], ArrowRight: [-_KEY_PAN, 0], ArrowUp: [0, _KEY_PAN], ArrowDown: [0, -_KEY_PAN] };
+            container.addEventListener('keydown', function (e) {
+                if (e.ctrlKey || e.metaKey || e.altKey) { return; }
+                if (moves[e.key]) { _panBy(z, moves[e.key][0], moves[e.key][1]); }
+                else if (e.key === '+' || e.key === '=') { _zoomBy(container, _ZOOM_STEP); }
+                else if (e.key === '-') { _zoomBy(container, 1 / _ZOOM_STEP); }
+                else if (e.key === '0') { _fitGraph(container); }
+                else { return; }
+                e.preventDefault();
+            });
         }
 
         // ============================================================
@@ -585,20 +831,32 @@ angular
 
         function _nativeMap() { return $injector.get('acfMapService').getMapViewImmediate().getNativeMap(); }
 
-        // Contour de la parcelle sur la carte native (OpenLayers fourni par GEO, voir module-development.md §1).
-        function _highlight(feature) {
+        // Couleurs des contours selon la place de la parcelle dans la filiation (mêmes couleurs que la légende du panneau)
+        var _MAP_COLORS = {
+            searched:   { stroke: '#c76a00', fill: 'rgba(255, 200, 120, 0.25)' },
+            descendant: { stroke: '#1e7b3a', fill: 'rgba(80, 180, 110, 0.22)' },
+            related:    { stroke: '#4a6fa5', fill: 'rgba(120, 160, 220, 0.18)' }
+        };
+
+        // Contours des parcelles sur la carte native (OpenLayers fourni par GEO, voir module-development.md §1).
+        // `items` : [{ feature, role }], role = searched | descendant | related.
+        function _highlight(items) {
             _clearHighlight();
             var ol = window.ol;
             var olMap = _nativeMap();
-            var features = new ol.format.GeoJSON().readFeatures(feature, {
-                dataProjection: 'EPSG:4326', featureProjection: olMap.getView().getProjection().getCode()
+            var reader = new ol.format.GeoJSON();
+            var options = { dataProjection: 'EPSG:4326', featureProjection: olMap.getView().getProjection().getCode() };
+            var features = [];
+            items.forEach(function (it) {
+                var c = _MAP_COLORS[it.role] || _MAP_COLORS.searched;
+                var style = new ol.style.Style({
+                    stroke: new ol.style.Stroke({ color: c.stroke, width: it.role === 'searched' ? 3 : 2 }),
+                    fill: new ol.style.Fill({ color: c.fill })
+                });
+                reader.readFeatures(it.feature, options).forEach(function (f) { f.setStyle(style); features.push(f); });
             });
             var layer = new ol.layer.Vector({
                 source: new ol.source.Vector({ features: features }),
-                style: new ol.style.Style({
-                    stroke: new ol.style.Stroke({ color: '#c76a00', width: 3 }),
-                    fill: new ol.style.Fill({ color: 'rgba(255, 200, 120, 0.25)' })
-                }),
                 zIndex: 1000   // au-dessus des fonds de plan et des couches thématiques
             });
             olMap.addLayer(layer);
@@ -656,12 +914,204 @@ angular
             }
         }
 
-        function _showOnMap(res) {
+        // `items` : [{ feature, bbox, role }] ; cadrage sur l'ensemble des contours
+        function _showOnMap(items) {
             if (!geoApplication.map) { console.warn('[geo-dfi] carte GEO indisponible'); return false; }
             var done = false;
-            try { _highlight(res.feature); done = true; } catch (err) { console.error('[geo-dfi] contour de la parcelle :', err); }
-            try { _zoomTo(res.bbox); done = true; } catch (err) { console.error('[geo-dfi] zoom sur la parcelle :', err); }
+            try { _highlight(items); done = true; } catch (err) { console.error('[geo-dfi] contour des parcelles :', err); }
+            try { _zoomTo(dfi.mergeBbox(items.map(function (it) { return it.bbox; }))); done = true; }
+            catch (err) { console.error('[geo-dfi] zoom sur les parcelles :', err); }
             return done;
+        }
+
+        // ============================================================
+        // Visite guidée (Driver.js, sur le modèle du module Panoramax)
+        // ============================================================
+        var _tour        = null;
+        var _tourWaiting = null;   // geste attendu par l'étape affichée : 'search' | 'node' | 'zoom'
+
+        // État mémorisé dans le navigateur : '' (jamais vue), 'v1:done' (terminée ou fermée par la croix),
+        // 'v1:never' (ne plus afficher). Seuls les boutons l'écrivent : fermer le panneau en pleine visite
+        // n'enregistre rien. Passer _TOUR_VERSION à 'v2' réaffiche la visite une fois pour tout le monde.
+        var _TOUR_KEY     = 'geo-dfi-tour';
+        var _TOUR_VERSION = 'v1';
+
+        function _tourPending() {
+            if (!_showTourOnStart) { return false; }
+            var v = '';
+            try { v = window.localStorage.getItem(_TOUR_KEY) || ''; } catch (e) { /* indisponible : visite réaffichée */ }
+            return v.indexOf(_TOUR_VERSION + ':') !== 0;
+        }
+
+        function _setTourState(state) {
+            try { window.localStorage.setItem(_TOUR_KEY, _TOUR_VERSION + ':' + state); } catch (e) { /* ignoré */ }
+        }
+
+        // Boutons (step.data.buttons : { label, secondary, action }) et compteur « Étape N sur M » (step.data.count)
+        // de la bulle ; les boutons natifs de Driver sont masqués : les nôtres disent ce qui est mémorisé.
+        function _renderPopover(popover, opts) {
+            var data = (opts.state.activeStep && opts.state.activeStep.data) || {};
+            [popover.previousButton, popover.nextButton, popover.progress].forEach(function (el) {
+                if (el) { el.style.display = 'none'; }
+            });
+            if (data.count) {
+                var count = document.createElement('div');
+                count.className = 'geo-dfi-tour-count';
+                count.textContent = data.count;
+                popover.title.insertAdjacentElement('beforebegin', count);
+            }
+            popover.footer.style.display = 'flex';
+            popover.footerButtons.style.display = 'flex';
+            (data.buttons || []).forEach(function (spec) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'geo-dfi-tour-btn' + (spec.secondary ? ' geo-dfi-tour-btn--secondary' : '');
+                b.textContent = spec.label;
+                b.addEventListener('click', spec.action);
+                popover.footerButtons.appendChild(b);
+            });
+        }
+
+        function _btn(label, action, secondary) { return { label: label, action: action, secondary: !!secondary }; }
+
+        // Appelé par les gestionnaires existants (recherche, clic sur un nœud, zoom ou déplacement du graphe)
+        function _tourNotify(gesture) {
+            if (!_tourWaiting || _tourWaiting !== gesture || !_tour || !_tour.isActive()) { return; }
+            _tourWaiting = null;
+            var tour = _tour;
+            var step = tour.getActiveStep();
+            var popover = tour.getState('popover');
+            if (popover && popover.wrapper) { popover.wrapper.classList.add('geo-dfi-tour-success'); }   // « ✓ Bien joué ! »
+            setTimeout(function () {
+                if (tour.isActive() && tour.getActiveStep() === step) { tour.moveNext(); }
+            }, 700);
+        }
+
+        function _inPanel(selector, fallback) {
+            return function () {
+                return _panelEl && (_panelEl.querySelector(selector) || (fallback && _panelEl.querySelector(fallback)));
+            };
+        }
+
+        // Bulles non modales : sans voile (overlayOpacity 0, SVG masqué en CSS) et sans la classe driver-active, dont la
+        // règle « * { pointer-events: none } » bloquerait la page, justement ce qu'on apprend à manipuler (voir _drive).
+        // Échap ferme (allowClose) sans rien mémoriser.
+        function _tourOptions(extra) {
+            var o = {
+                animate: false, overlayOpacity: 0, stagePadding: 4, stageRadius: 4, allowClose: true, smoothScroll: false,
+                popoverClass: 'geo-dfi-tour', popoverOffset: 12, closeBtnLabel: 'Fermer', onPopoverRender: _renderPopover
+            };
+            for (var k in extra) { o[k] = extra[k]; }
+            return o;
+        }
+
+        function _drive(instance) {
+            instance.drive();
+            document.body.classList.remove('driver-active');
+        }
+
+        // ── Accroche sur l'onglet, au chargement de l'appli, tant que la visite n'a pas été vue ──
+        var _teaser = null;
+
+        // L'onglet est rendu par GEO après executeWhenInitialized : quelques essais espacés, puis on renonce (jamais de bulle
+        // flottante au milieu de l'écran). On vise l'icône elle-même (classe posée par GEO, voir icon dans _registerWidget) :
+        // son ancêtre cliquable peut être large et décaler la bulle (constaté avec Panoramax). Si GEO en rend plusieurs, on
+        // garde la plus à droite parmi les visibles, celle de la barre latérale droite.
+        function _startTeaser(attempt) {
+            if (!_tourPending() || _currentScope) { return; }   // déjà vue, ou panneau déjà ouvert
+            var icon = null;
+            Array.prototype.forEach.call(document.querySelectorAll('.geo-dfi-tab-icon'), function (el) {
+                var r = el.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0 && (!icon || r.left > icon.getBoundingClientRect().left)) { icon = el; }
+            });
+            if (!icon) {
+                if (attempt < 10) { setTimeout(function () { _startTeaser(attempt + 1); }, 500); }
+                return;
+            }
+            var teaser = _teaser = driver(_tourOptions({
+                onDestroyed: function () { if (_teaser === teaser) { _teaser = null; } }
+            }));
+            teaser.setSteps([{
+                element: icon,
+                popover: {
+                    title: 'Nouveau : ' + _toolName,
+                    description: 'Ouvrez cet onglet pour savoir d\'où vient une parcelle et ce qu\'elle est devenue (divisions, '
+                        + 'réunions…). Une courte visite guidée vous attend à l\'ouverture.',
+                    side: 'left', align: 'center', showButtons: ['close']
+                },
+                data: { buttons: [
+                    _btn('Ne plus afficher', function () { _setTourState('never'); teaser.destroy(); }, true),
+                    _btn('Plus tard', function () { teaser.destroy(); })
+                ] }
+            }]);
+            _drive(teaser);
+        }
+
+        function _cancelTeaser() {
+            if (_teaser && _teaser.isActive()) { _teaser.destroy(); }
+            _teaser = null;
+        }
+
+        // ── Visite du panneau ──
+        function _startTour() {
+            if (_tour && _tour.isActive()) { _tour.destroy(); return; }   // « ? » rappuyé en cours de visite : fermer
+            _cancelTeaser();
+
+            // La croix mémorise « terminée » : l'utilisateur a écarté la visite, le « ? » la relance.
+            var tour = _tour = driver(_tourOptions({
+                closeBtnLabel: 'Fermer la visite',
+                onCloseClick: function () { _setTourState('done'); tour.destroy(); },
+                onDestroyed: function () { _tourWaiting = null; if (_tour === tour) { _tour = null; } }
+            }));
+            var prev = _btn('‹ Précédent', function () { tour.movePrevious(); }, true);
+            var next = _btn('Suivant ›', function () { tour.moveNext(); });
+
+            // Étape sur un élément du panneau ; `gesture` : geste qui la fait avancer (« Suivant » la passe aussi).
+            // Élément absent (pas encore de recherche) : bulle centrée, et le texte le précise.
+            function step(id, element, title, description, gesture, buttons) {
+                return {
+                    element: element,
+                    popover: { title: title, description: description, side: 'left', align: 'start', showButtons: ['close'] },
+                    data: { id: id, buttons: buttons || [prev, next] },
+                    onHighlightStarted: function (el, s) {
+                        _tourWaiting = gesture || null;
+                        s.popover.description = description + (el ? '' : ' <em>(Visible après une recherche.)</em>');
+                    },
+                    onDeselected: function () { _tourWaiting = null; }
+                };
+            }
+            function key(cls) { return '<span class="geo-dfi-tour-key geo-dfi-tour-key--' + cls + '"></span>'; }
+
+            var steps = [
+                step('search', _inPanel('.geo-dfi-form'), 'Choisir une parcelle',
+                    'Choisissez la commune, la section et le numéro, puis cliquez sur « Chercher ».', 'search',
+                    [_btn('Ne plus afficher', function () { _setTourState('never'); tour.destroy(); }, true), next]),
+                step('summary', _inPanel('.geo-dfi-summary', '.geo-dfi-result'), 'La synthèse',
+                    'D\'où vient la parcelle et ce qu\'elle est devenue, en une phrase.'),
+                step('graph', _inPanel('.geo-dfi-graph-wrap'), 'Lire le graphe',
+                    'En haut les parcelles mères, en bas les filles, reliées par l\'opération qui les a créées.<br>'
+                    + key('searched') + 'parcelle cherchée<br>'
+                    + key('lineage') + 'ses ancêtres et descendantes<br>'
+                    + key('leaf') + 'parcelle voisine (sœur, autre mère) : un clic pour suivre sa propre filiation<br>'
+                    + key('lot') + 'opération (division, réunion…) et sa date'),
+                step('node', _inPanel('.geo-dfi-node--searched', '.geo-dfi-graph-wrap'), 'Cliquer sur une parcelle',
+                    'Cliquez sur une parcelle ou une opération : sa fiche s\'affiche et sa lignée reste en couleur, le reste '
+                    + 's\'estompe. Le survol d\'un nœud en donne l\'essentiel.', 'node'),
+                step('zoom', _inPanel('.geo-dfi-zoom'), 'Zoomer et se déplacer',
+                    'Essayez : molette ou boutons + et − pour zoomer, glisser pour se déplacer, dernier bouton pour revoir '
+                    + 'tout le graphe. Au clavier : flèches, +, − et 0.', 'zoom'),
+                _locateEnabled ? step('locate-all', _inPanel('.geo-dfi-locate-all'), 'Voir sur la carte',
+                    'Dessine sur la carte les parcelles de la filiation qui existent encore au cadastre, avec une légende. '
+                    + 'L\'épingle de la barre d\'outils localise la seule parcelle cherchée.') : null,
+                step('help', _inPanel('.geo-dfi-help-btn'), 'C\'est tout !',
+                    'Le plein écran agrandit le panneau pour les grands graphes, l\'étincelle ouvre les nouveautés du module, '
+                    + 'et ce bouton relance la visite à tout moment.', null,
+                    [prev, _btn('Terminer', function () { _setTourState('done'); tour.destroy(); })])
+            ].filter(Boolean);
+            steps.forEach(function (s, i) { s.data.count = 'Étape ' + (i + 1) + ' sur ' + steps.length; });
+
+            tour.setSteps(steps);
+            _drive(tour);
         }
 
         // ============================================================
@@ -672,6 +1122,8 @@ angular
             var style = document.createElement('style');
             style.id = 'geo-dfi-styles';
             style.textContent = [
+                '.geo-dfi-tab-icon::before{content:"";display:inline-block;width:1em;height:1em;vertical-align:-.125em;background-color:currentColor;',
+                '  -webkit-mask:' + _TAB_ICON_MASK + ' center/contain no-repeat;mask:' + _TAB_ICON_MASK + ' center/contain no-repeat;}',
                 // Barre d'outils fixe en haut, contenu qui défile seul en dessous (même principe que le panneau de Panoramax)
                 '.geo-dfi{display:flex;flex-direction:column;height:100%;font-size:13px;line-height:1.4;color:#222;background:#fff;overflow:hidden;box-sizing:border-box;}',
                 '.geo-dfi-toolbar{flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px;background:#f4f6f9;border-bottom:1px solid #d5dae1;}',
@@ -689,6 +1141,10 @@ angular
                 '.geo-dfi-iconbtn--on:hover{background:#1d3a66;}',
                 '.geo-dfi-icon{width:18px;height:18px;display:block;}',
                 '.geo-dfi--full .geo-dfi-graph{max-height:70vh;}',
+                // Plein écran : la fiche du nœud choisi en volet à droite du graphe, plutôt que dessous
+                '.geo-dfi--full .geo-dfi-view{display:flex;gap:12px;align-items:flex-start;}',
+                '.geo-dfi--full .geo-dfi-graph-wrap{flex:1 1 auto;min-width:0;}',
+                '.geo-dfi--full .geo-dfi-detail{flex:0 0 320px;max-height:70vh;overflow:auto;box-sizing:border-box;}',
                 'body.' + _FULLSCREEN_BODY_CLASS + ' .acf-map-controls-topright{display:none!important;}',
                 '.geo-dfi label{display:block;margin-bottom:4px;font-weight:600;}',
                 '.geo-dfi-row{display:flex;gap:6px;margin-bottom:8px;}',
@@ -708,12 +1164,24 @@ angular
                 '.geo-dfi-msg{margin:8px 0;padding:6px 8px;background:#f1f3f6;border-radius:4px;}',
                 '.geo-dfi-msg--error{background:#fdecea;color:#8a1c12;}',
                 '.geo-dfi-msg--warn{background:#fff4d6;color:#6b4b00;}',
+                // Légende de « Localiser toute la filiation » : mêmes couleurs que les contours sur la carte (_MAP_COLORS)
+                '.geo-dfi-maplegend div + div{margin-top:4px;}',
+                '.geo-dfi-swatch{display:inline-block;width:12px;height:12px;margin:0 4px 0 10px;vertical-align:-1px;border:2px solid;border-radius:2px;}',
+                '.geo-dfi-swatch:first-child{margin-left:0;}',
+                '.geo-dfi-swatch--searched{border-color:#c76a00;background:rgba(255, 200, 120, 0.5);}',
+                '.geo-dfi-swatch--descendant{border-color:#1e7b3a;background:rgba(80, 180, 110, 0.45);}',
+                '.geo-dfi-swatch--related{border-color:#4a6fa5;background:rgba(120, 160, 220, 0.4);}',
                 '.geo-dfi-parcel{margin:10px 0 4px;font-size:15px;font-weight:700;}',
                 '.geo-dfi-parcel .geo-dfi-btn{margin-left:6px;font-size:12px;font-weight:400;}',
                 '.geo-dfi-idu{margin:0 6px;font-size:12px;font-weight:400;color:#555;}',
                 '.geo-dfi-summary{margin:6px 0 8px;padding-left:18px;}',
-                '.geo-dfi-graph{margin:8px 0;max-height:52vh;overflow:auto;border:1px solid #d5dae1;border-radius:4px;background:#fbfcfd;}',
+                '.geo-dfi-graph-wrap{position:relative;margin:8px 0;}',
+                // Zoom et déplacement à la main (molette, glisser, pincement) : pas de défilement ni de geste natif dans la zone
+                '.geo-dfi-graph{max-height:52vh;overflow:hidden;touch-action:none;cursor:grab;border:1px solid #d5dae1;border-radius:4px;background:#fbfcfd;}',
+                '.geo-dfi-graph--dragging{cursor:grabbing;}',
                 '.geo-dfi-svg{display:block;}',
+                '.geo-dfi-zoom{position:absolute;top:6px;right:6px;display:flex;flex-direction:column;gap:4px;}',
+                '.geo-dfi-zoom .geo-dfi-iconbtn{width:28px;height:28px;}',
                 '.geo-dfi-edge{fill:none;stroke:#8a96a8;stroke-width:1.4;}',
                 '.geo-dfi-arrowhead{fill:#8a96a8;}',
                 '.geo-dfi-node{cursor:pointer;outline:none;}',
@@ -723,13 +1191,47 @@ angular
                 '.geo-dfi-node--leaf rect{stroke-dasharray:3 2;fill:#f5f7fa;}',
                 '.geo-dfi-node--searched rect{fill:#ffe2b8;stroke:#c76a00;stroke-width:2.2;}',
                 '.geo-dfi-node--selected rect{stroke:#0b6b3a;stroke-width:2.6;}',
+                '.geo-dfi-node--dim{opacity:.45;}',
+                '.geo-dfi-edge--lineage{stroke:#4a6fa5;stroke-width:2;}',
+                '.geo-dfi-edge--dim{opacity:.35;}',
                 '.geo-dfi-node:focus-visible rect{stroke:#0b6b3a;stroke-width:3;}',
                 '.geo-dfi-detail{margin:8px 0;padding:8px;border:1px solid #d5dae1;border-radius:4px;}',
                 '.geo-dfi-detail-title{margin-bottom:4px;font-weight:700;}',
                 '.geo-dfi-detail .geo-dfi-btn{margin:6px 6px 0 0;}',
                 '.geo-dfi-chips{margin-top:4px;}',
                 '.geo-dfi-chip{margin:2px 4px 2px 0;padding:1px 8px;border:1px solid #4a6fa5;border-radius:10px;background:#e8f0fe;color:#27487a;font:inherit;cursor:pointer;}',
-                '.geo-dfi-foot{margin-top:14px;padding-top:8px;border-top:1px solid #e1e5ea;font-size:11px;color:#59616e;}'
+                '.geo-dfi-foot{margin-top:14px;padding-top:8px;border-top:1px solid #e1e5ea;font-size:11px;color:#59616e;}',
+
+                // Visite guidée : non modale (pas de voile), cible qui pulse ; thème repris du module Panoramax
+                // (blanc, liseré et bouton rouge GEO, « Étape N sur M »). Tailles en px : indépendantes de GEO.
+                '.driver-overlay{display:none!important;}',
+                '@keyframes geo-dfi-pulse{0%,100%{box-shadow:0 0 0 0 rgba(240,74,74,.55);}50%{box-shadow:0 0 0 8px rgba(240,74,74,0);}}',
+                '.geo-dfi .driver-active-element,.geo-dfi-tab-icon.driver-active-element{animation:geo-dfi-pulse 1.4s ease-in-out infinite;}',
+                '.geo-dfi-tab-icon.driver-active-element{border-radius:50%;}',
+                '@media (prefers-reduced-motion:reduce){.geo-dfi .driver-active-element,.geo-dfi-tab-icon.driver-active-element{',
+                '  animation:none;outline:3px solid #f04a4a;}}',
+                '.driver-popover.geo-dfi-tour{background:#fff;border-radius:4px;min-width:260px;max-width:340px;padding:0;',
+                '  border-top:3px solid #f04a4a;box-shadow:0 4px 16px rgba(0,0,0,.18);color:#263238;}',
+                '.geo-dfi-tour .driver-popover-title{font-size:14px;font-weight:700;line-height:1.45;color:#263238;padding:0 14px;display:block;}',
+                '.geo-dfi-tour .driver-popover-description{font-size:14px;line-height:1.45;color:#263238;margin:0;padding:2px 14px 12px;}',
+                '.geo-dfi-tour .driver-popover-close-btn{width:30px;height:30px;font-size:20px;line-height:30px;color:#90a4ae;}',
+                '.geo-dfi-tour .driver-popover-close-btn:hover,.geo-dfi-tour .driver-popover-close-btn:focus-visible{color:#263238;}',
+                '.geo-dfi-tour-count{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#f04a4a;padding:12px 14px 4px;}',
+                '.geo-dfi-tour .driver-popover-footer{margin:0;padding:0 12px 12px;}',
+                '.geo-dfi-tour .driver-popover-navigation-btns{flex-wrap:wrap;justify-content:flex-end;gap:6px;}',
+                '.geo-dfi-tour-btn{all:unset;box-sizing:border-box;margin:0;font-size:13px;line-height:1.3;cursor:pointer;',
+                '  border-radius:3px;padding:6px 14px;font-weight:600;background:#f04a4a;color:#fff;}',
+                '.geo-dfi-tour-btn:hover{background:#d93b3b;}',
+                '.geo-dfi-tour-btn--secondary{background:none;color:#607d8b;font-weight:400;padding:6px 8px;}',
+                '.geo-dfi-tour-btn--secondary:hover{background:#eceff1;color:#263238;}',
+                '.geo-dfi-tour-btn:focus-visible{outline:2px solid #263238;outline-offset:2px;}',
+                '.geo-dfi-tour-success .driver-popover-description::before{content:"✓ Bien joué !";display:block;color:#00a844;font-weight:700;margin-bottom:.4em;}',
+                // Légende des couleurs du graphe (étape « Lire le graphe ») : mêmes couleurs que les nœuds
+                '.geo-dfi-tour-key{display:inline-block;width:12px;height:10px;margin-right:6px;vertical-align:-1px;border:1px solid;border-radius:2px;}',
+                '.geo-dfi-tour-key--searched{background:#ffe2b8;border:2px solid #c76a00;}',
+                '.geo-dfi-tour-key--lineage{background:#e8f0fe;border-color:#4a6fa5;}',
+                '.geo-dfi-tour-key--leaf{background:#f5f7fa;border-color:#4a6fa5;border-style:dashed;}',
+                '.geo-dfi-tour-key--lot{width:16px;border-radius:6px;background:#f4f1e8;border-color:#a08a4a;}'
             ].join('\n');
             document.head.appendChild(style);
         }
