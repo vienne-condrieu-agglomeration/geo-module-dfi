@@ -242,6 +242,17 @@ angular
                 '  <div class="geo-dfi-result" ng-if="state.result">',
                 '    <div class="geo-dfi-parcel">{{ state.result.label }} <span class="geo-dfi-idu">{{ state.result.idu }}</span></div>',
                 '    <div class="geo-dfi-msg" ng-if="state.locateMessage">{{ state.locateMessage }}</div>',
+                '    <div class="geo-dfi-msg geo-dfi-maplegend" ng-if="state.mapSummary">',
+                '      <div><span class="geo-dfi-swatch geo-dfi-swatch--searched"></span>Parcelle cherchée',
+                '        <span class="geo-dfi-swatch geo-dfi-swatch--descendant"></span>Descendantes',
+                '        <span class="geo-dfi-swatch geo-dfi-swatch--related"></span>Autres parcelles liées</div>',
+                '      <div ng-if="state.mapSummary.gone.length">Disparues du cadastre actuel, sans contour : {{ state.mapSummary.gone.join(\', \') }}.</div>',
+                '      <div ng-if="state.mapSummary.missing.length">Introuvables au cadastre actuel : {{ state.mapSummary.missing.join(\', \') }}.</div>',
+                '      <div ng-if="state.mapSummary.skipped.length">Non cherchées (au-delà de {{ state.mapSummary.max }} parcelles) : '
+                    + '{{ state.mapSummary.skipped.length }}.</div>',
+                '      <div ng-if="state.mapSummary.failed">Erreur du service cadastral pour {{ state.mapSummary.failed }} parcelle(s) '
+                    + '(voir la console du navigateur).</div>',
+                '    </div>',
                 '    <div class="geo-dfi-msg" ng-if="!state.result.hasHistory">Aucune filiation connue dans les DFI pour cette parcelle. ',
                 '      L\'historique informatisé commence vers 1988-1990 et les remembrements n\'y figurent pas.</div>',
                 '    <ul class="geo-dfi-summary" ng-if="state.result.hasHistory">',
@@ -249,6 +260,8 @@ angular
                 '      <li ng-repeat="t in state.result.futureText">{{ t }}</li>',
                 '      <li ng-if="!state.result.futureText.length">Devenir : aucune évolution postérieure connue dans les DFI.</li>',
                 '    </ul>',
+                '    <button type="button" class="geo-dfi-btn" ng-if="locateEnabled && state.result.hasHistory" ng-click="locateAll()"',
+                '            ng-disabled="state.locating">Localiser toute la filiation sur la carte</button>',
                 '    <div class="geo-dfi-msg" ng-if="state.result.truncated">Graphe tronqué : trop de parcelles liées.</div>',
                 '    <div class="geo-dfi-graph" tabindex="-1"></div>',
                 '    <div class="geo-dfi-detail" ng-if="state.selected">',
@@ -290,8 +303,9 @@ angular
                 $scope.state     = {
                     idu: '', insee: '', section: '', numberText: '', listLoading: false,
                     loading: false, error: '', result: null, selected: null,
-                    locating: false, locateMessage: '', located: false
+                    locating: false, locateMessage: '', located: false, mapSummary: null
                 };
+                var _graph = null;
                 var _layout = null;
                 var _lookup = null;
                 var _selectedId = null;
@@ -307,7 +321,7 @@ angular
 
                 $scope.search = function () {
                     var st = $scope.state;
-                    st.error = ''; st.locateMessage = ''; st.selected = null;
+                    st.error = ''; st.locateMessage = ''; st.selected = null; st.mapSummary = null;
                     var parsed = dfi.parseIdu(st.idu);
                     if (!parsed) {
                         st.result = null;
@@ -337,7 +351,7 @@ angular
                     _lookup = lookup;
                     st.loading = false;
                     _syncCascade(lookup, parsed);
-                    var graph = dfi.buildGraph(lookup, parsed.key);
+                    var graph = _graph = dfi.buildGraph(lookup, parsed.key);
                     var summary = dfi.parcelSummary(lookup, parsed.key);
                     st.result = {
                         parsed: parsed, idu: parsed.idu, label: dfi.parcelLabel(parsed.key), hasHistory: graph.hasHistory,
@@ -465,7 +479,7 @@ angular
                 $scope.locate = function (p) {
                     var st = $scope.state;
                     var label = p.label || dfi.parcelLabel(p.key);
-                    st.locating = true; st.locateMessage = '';
+                    st.locating = true; st.locateMessage = ''; st.mapSummary = null;
                     dfi.loadParcel(_fetch, _cadastreUrl, p).then(function (res) {
                         _apply(function () {
                             st.locating = false;
@@ -474,25 +488,73 @@ angular
                                     + 'elle ne peut pas être localisée.';
                                 return;
                             }
-                            // En plein écran la carte est masquée : on en sort, puis on attend que le panneau ait retrouvé sa largeur
-                            // (setPanelSize se joue à 0, 100 et 300 ms) avant de mesurer ce qu'il recouvre.
-                            var wait = 0;
-                            if ($scope.isFullscreen) { _setFullscreen(false); wait = 450; }
-                            $timeout(function () {
-                                if (!_showOnMap(res)) {
+                            _whenMapVisible(function () {
+                                if (!_showOnMap([{ feature: res.feature, bbox: res.bbox, role: 'searched' }])) {
                                     st.locateMessage = "Parcelle trouvée, mais la carte n'a pas pu être déplacée (voir la console du navigateur).";
                                     return;
                                 }
                                 st.located = true;
                                 st.locateMessage = [label, res.commune, dfi.formatArea(res.contenance)].filter(Boolean).join(' · ') + ' : repérée sur la carte.';
-                            }, wait);
+                            });
                         });
                     }).catch(function (err) {
                         console.error('[geo-dfi] localisation :', err);
                         _apply(function () { st.locating = false; st.locateMessage = _locateError(err); });
                     });
                 };
-                $scope.clearLocation = function () { _clearHighlight(); $scope.state.located = false; $scope.state.locateMessage = ''; };
+
+                // Toute la filiation : les parcelles du graphe qui existent encore au cadastre, colorées selon leur place.
+                // Les parcelles remplacées (mères d'un lot) n'ont plus de contour : elles sont listées, pas cherchées.
+                $scope.locateAll = function () {
+                    var st = $scope.state;
+                    if (!_graph) { return; }
+                    var targets = dfi.mapTargets(_graph, _lookup, dfi.MAX_MAP_PARCELS);
+                    st.mapSummary = null;
+                    st.locating = true;
+                    st.locateMessage = 'Recherche des contours de ' + targets.query.length + ' parcelle(s) au cadastre actuel…';
+                    dfi.mapLimit(targets.query, dfi.MAP_CONCURRENCY, function (q) {
+                        return dfi.loadParcel(_fetch, _cadastreUrl, _parcelInfo(q.key));
+                    }).then(function (results) {
+                        _apply(function () {
+                            st.locating = false;
+                            var found = [];
+                            var summary = { gone: targets.gone.map(dfi.parcelLabel), missing: [], failed: 0,
+                                            skipped: targets.skipped, max: dfi.MAX_MAP_PARCELS };
+                            results.forEach(function (r, i) {
+                                var q = targets.query[i];
+                                if (r.error) { summary.failed++; console.error('[geo-dfi] localisation de ' + q.key + ' :', r.error); }
+                                else if (r.value) { found.push({ feature: r.value.feature, bbox: r.value.bbox, role: q.role }); }
+                                else { summary.missing.push(dfi.parcelLabel(q.key)); }
+                            });
+                            st.mapSummary = summary;
+                            if (!found.length) {
+                                st.locateMessage = 'Aucune parcelle de cette filiation n\'a de contour au cadastre actuel.';
+                                return;
+                            }
+                            _whenMapVisible(function () {
+                                if (!_showOnMap(found)) {
+                                    st.locateMessage = "Parcelles trouvées, mais la carte n'a pas pu être déplacée (voir la console du navigateur).";
+                                    return;
+                                }
+                                st.located = true;
+                                st.locateMessage = found.length + ' parcelle(s) de la filiation repérée(s) sur la carte.';
+                            });
+                        });
+                    });
+                };
+
+                // En plein écran la carte est masquée : on en sort, puis on attend que le panneau ait retrouvé sa largeur
+                // (setPanelSize se joue à 0, 100 et 300 ms) avant de mesurer ce qu'il recouvre.
+                function _whenMapVisible(fn) {
+                    var wait = 0;
+                    if ($scope.isFullscreen) { _setFullscreen(false); wait = 450; }
+                    $timeout(fn, wait);
+                }
+
+                $scope.clearLocation = function () {
+                    _clearHighlight();
+                    $scope.state.located = false; $scope.state.locateMessage = ''; $scope.state.mapSummary = null;
+                };
 
                 // Plein écran : le panneau prend toute la largeur ; les boutons de la carte (qui se replient et chevauchent
                 // ceux de gauche quand la carte est masquée) sont cachés tant que dure le plein écran. Échap en sort.
@@ -585,20 +647,32 @@ angular
 
         function _nativeMap() { return $injector.get('acfMapService').getMapViewImmediate().getNativeMap(); }
 
-        // Contour de la parcelle sur la carte native (OpenLayers fourni par GEO, voir module-development.md §1).
-        function _highlight(feature) {
+        // Couleurs des contours selon la place de la parcelle dans la filiation (mêmes couleurs que la légende du panneau)
+        var _MAP_COLORS = {
+            searched:   { stroke: '#c76a00', fill: 'rgba(255, 200, 120, 0.25)' },
+            descendant: { stroke: '#1e7b3a', fill: 'rgba(80, 180, 110, 0.22)' },
+            related:    { stroke: '#4a6fa5', fill: 'rgba(120, 160, 220, 0.18)' }
+        };
+
+        // Contours des parcelles sur la carte native (OpenLayers fourni par GEO, voir module-development.md §1).
+        // `items` : [{ feature, role }], role = searched | descendant | related.
+        function _highlight(items) {
             _clearHighlight();
             var ol = window.ol;
             var olMap = _nativeMap();
-            var features = new ol.format.GeoJSON().readFeatures(feature, {
-                dataProjection: 'EPSG:4326', featureProjection: olMap.getView().getProjection().getCode()
+            var reader = new ol.format.GeoJSON();
+            var options = { dataProjection: 'EPSG:4326', featureProjection: olMap.getView().getProjection().getCode() };
+            var features = [];
+            items.forEach(function (it) {
+                var c = _MAP_COLORS[it.role] || _MAP_COLORS.searched;
+                var style = new ol.style.Style({
+                    stroke: new ol.style.Stroke({ color: c.stroke, width: it.role === 'searched' ? 3 : 2 }),
+                    fill: new ol.style.Fill({ color: c.fill })
+                });
+                reader.readFeatures(it.feature, options).forEach(function (f) { f.setStyle(style); features.push(f); });
             });
             var layer = new ol.layer.Vector({
                 source: new ol.source.Vector({ features: features }),
-                style: new ol.style.Style({
-                    stroke: new ol.style.Stroke({ color: '#c76a00', width: 3 }),
-                    fill: new ol.style.Fill({ color: 'rgba(255, 200, 120, 0.25)' })
-                }),
                 zIndex: 1000   // au-dessus des fonds de plan et des couches thématiques
             });
             olMap.addLayer(layer);
@@ -656,11 +730,13 @@ angular
             }
         }
 
-        function _showOnMap(res) {
+        // `items` : [{ feature, bbox, role }] ; cadrage sur l'ensemble des contours
+        function _showOnMap(items) {
             if (!geoApplication.map) { console.warn('[geo-dfi] carte GEO indisponible'); return false; }
             var done = false;
-            try { _highlight(res.feature); done = true; } catch (err) { console.error('[geo-dfi] contour de la parcelle :', err); }
-            try { _zoomTo(res.bbox); done = true; } catch (err) { console.error('[geo-dfi] zoom sur la parcelle :', err); }
+            try { _highlight(items); done = true; } catch (err) { console.error('[geo-dfi] contour des parcelles :', err); }
+            try { _zoomTo(dfi.mergeBbox(items.map(function (it) { return it.bbox; }))); done = true; }
+            catch (err) { console.error('[geo-dfi] zoom sur les parcelles :', err); }
             return done;
         }
 
@@ -708,6 +784,13 @@ angular
                 '.geo-dfi-msg{margin:8px 0;padding:6px 8px;background:#f1f3f6;border-radius:4px;}',
                 '.geo-dfi-msg--error{background:#fdecea;color:#8a1c12;}',
                 '.geo-dfi-msg--warn{background:#fff4d6;color:#6b4b00;}',
+                // Légende de « Localiser toute la filiation » : mêmes couleurs que les contours sur la carte (_MAP_COLORS)
+                '.geo-dfi-maplegend div + div{margin-top:4px;}',
+                '.geo-dfi-swatch{display:inline-block;width:12px;height:12px;margin:0 4px 0 10px;vertical-align:-1px;border:2px solid;border-radius:2px;}',
+                '.geo-dfi-swatch:first-child{margin-left:0;}',
+                '.geo-dfi-swatch--searched{border-color:#c76a00;background:rgba(255, 200, 120, 0.5);}',
+                '.geo-dfi-swatch--descendant{border-color:#1e7b3a;background:rgba(80, 180, 110, 0.45);}',
+                '.geo-dfi-swatch--related{border-color:#4a6fa5;background:rgba(120, 160, 220, 0.4);}',
                 '.geo-dfi-parcel{margin:10px 0 4px;font-size:15px;font-weight:700;}',
                 '.geo-dfi-parcel .geo-dfi-btn{margin-left:6px;font-size:12px;font-weight:400;}',
                 '.geo-dfi-idu{margin:0 6px;font-size:12px;font-weight:400;color:#555;}',

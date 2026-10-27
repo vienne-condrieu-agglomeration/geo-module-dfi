@@ -501,6 +501,55 @@ export function loadParcel(fetchFn, base, p) {
     }).then(function (json) { return parseCadastre(json, p.insee + (p.prefix || '000') + p.section + p.number); });
 }
 
+// ─── Toute la filiation sur la carte ─────────────────────────────────────────────────────────────────
+
+export var MAX_MAP_PARCELS = 40;     // requêtes à l'API Carto pour une filiation (débit raisonnable)
+export var MAP_CONCURRENCY = 3;      // requêtes simultanées au plus (constaté : l'IGN répond 429 au-delà)
+
+/**
+ * Parcelles du graphe à chercher sur la carte. Une parcelle mère d'un lot dont elle n'est pas aussi fille a été divisée,
+ * réunie ou renumérotée : elle n'a plus de contour au cadastre actuel, on ne l'interroge pas (`gone`). Les autres sont
+ * classées : la parcelle cherchée, ses descendantes (niveau > 0) et les autres parcelles liées (sœurs, co-mères encore
+ * existantes). Au-delà de `max`, les suivantes ne sont pas cherchées (`skipped`) ; les nœuds du graphe sont dans l'ordre
+ * de proximité avec la parcelle cherchée.
+ */
+export function mapTargets(graph, lookup, max) {
+    var out = { query: [], gone: [], skipped: [] };
+    graph.nodes.forEach(function (n) {
+        if (n.type !== 'parcel') { return; }
+        var replaced = (lookup.asMother[n.key] || []).some(function (i) { return lookup.lots[i][5].indexOf(n.key) < 0; });
+        if (replaced) { out.gone.push(n.key); return; }
+        if (out.query.length >= max) { out.skipped.push(n.key); return; }
+        out.query.push({ key: n.key, role: n.key === graph.key ? 'searched' : n.level > 0 ? 'descendant' : 'related' });
+    });
+    return out;
+}
+
+/** Applique `fn` (qui renvoie une promesse) à chaque élément, `limit` à la fois ; résultats dans l'ordre : { value } ou { error }. */
+export function mapLimit(items, limit, fn) {
+    var results = new Array(items.length);
+    var next = 0;
+    function worker() {
+        if (next >= items.length) { return Promise.resolve(); }
+        var i = next++;
+        return Promise.resolve().then(function () { return fn(items[i], i); })
+            .then(function (value) { results[i] = { value: value }; }, function (error) { results[i] = { error: error }; })
+            .then(worker);
+    }
+    var workers = [];
+    for (var w = 0; w < Math.min(limit, items.length); w++) { workers.push(worker()); }
+    return Promise.all(workers).then(function () { return results; });
+}
+
+/** Emprise commune à plusieurs emprises { minX, minY, maxX, maxY }, ou null pour une liste vide. */
+export function mergeBbox(list) {
+    return list.reduce(function (acc, b) {
+        if (!acc) { return { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY }; }
+        return { minX: Math.min(acc.minX, b.minX), minY: Math.min(acc.minY, b.minY),
+                 maxX: Math.max(acc.maxX, b.maxX), maxY: Math.max(acc.maxY, b.maxY) };
+    }, null);
+}
+
 /** « 14 000 m² » ou « 1,4 ha » à partir d'une contenance en mètres carrés. */
 export function formatArea(m2) {
     if (typeof m2 !== 'number' || !isFinite(m2)) { return ''; }

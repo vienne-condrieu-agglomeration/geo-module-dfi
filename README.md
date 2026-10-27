@@ -42,7 +42,13 @@ Le bouton « Localiser sur la carte » (sur la parcelle cherchée et sur chaque 
 préfixe de section de la parcelle. Il zoome sur la parcelle (par la vue OpenLayers native, avec un recouvrement du panneau mesuré sur la page), la centre dans la partie de la carte que le panneau ne recouvre pas, et dessine son
 contour sur une couche temporaire (« Effacer le repérage », ou fermeture du panneau, la retire).
 
-- **Confidentialité** : le service de l'IGN voit l'adresse IP du poste et la référence de la parcelle demandée (données publiques). Le bouton se
+Le bouton « Localiser toute la filiation sur la carte » (sous la synthèse) dessine en une fois les parcelles du graphe qui existent encore
+au cadastre actuel, colorées selon leur place : la parcelle cherchée (orange), ses descendantes (vert), les autres parcelles liées (bleu :
+sœurs, parcelles d'origine encore existantes). Une légende dans le panneau liste aussi les parcelles qui ne peuvent pas être dessinées.
+Les parcelles remplacées (mères d'une opération) ne sont pas demandées au service : elles n'y ont plus de contour. Au plus 40 parcelles sont
+demandées, 3 à la fois.
+
+- **Confidentialité** : le service de l'IGN voit l'adresse IP du poste et la référence des parcelles demandées (données publiques). Les boutons se
   désactive dans les réglages ; l'adresse du service peut pointer vers un miroir interne.
 - **Disponibilité** : si le service n'est pas joignable (réseau, filtrage), un message l'indique ; le graphe reste utilisable.
 - **Parcelles disparues** : une parcelle divisée, réunie ou renumérotée n'existe plus au cadastre actuel : elle est signalée, pas localisée.
