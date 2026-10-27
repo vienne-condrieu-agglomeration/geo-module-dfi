@@ -11,6 +11,10 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+### Modifié
+
+- L'**onglet** du module affiche la même icône de filiation que la barre d'outils et l'aperçu, à la place de la loupe
+
 ## [0.3.1] — 2026-10-26
 
 ### Modifié

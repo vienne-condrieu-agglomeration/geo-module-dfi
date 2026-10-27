@@ -6,7 +6,7 @@ et ne sont pas redistribués ici ; les dépendances de développement (webpack, 
 
 ## Icônes Lucide
 
-- Icônes copiées en SVG dans `src/js/extension.js` (barre d'outils du panneau) : « graph-hub » (<https://lucide.dev/icons/graph-hub>),
+- Icônes copiées en SVG dans `src/js/extension.js` (onglet et barre d'outils du panneau) : « graph-hub » (<https://lucide.dev/icons/graph-hub>),
   « map-pin » (<https://lucide.dev/icons/map-pin>), « map-pin-off » (<https://lucide.dev/icons/map-pin-off>), « sparkles » (<https://lucide.dev/icons/sparkles>), « maximize » et « minimize »
   (<https://lucide.dev/icons/maximize>, <https://lucide.dev/icons/minimize>). Source : <https://github.com/lucide-icons/lucide>
   (version 1.61.0 des icônes). Aucune modification des tracés.
