@@ -11,6 +11,12 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+### Ajouté
+
+- **Zoom et déplacement du graphe**, comme sur une carte : molette (centrée sur le pointeur), boutons +, − et « Voir tout le
+  graphe », glisser pour se déplacer, pincement et glisser au doigt sur tablette, et au clavier (flèches, + et −, 0 pour tout
+  voir). Le déplacement reste dans l'emprise du graphe, pour ne jamais se perdre dans le vide. Le graphe s'ouvre comme avant : en entier s'il tient, sinon centré sur la parcelle cherchée, à la taille réelle
+
 ## [0.3.1] — 2026-10-26
 
 ### Modifié

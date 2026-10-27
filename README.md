@@ -10,7 +10,10 @@ ce qu'elle est devenue, sous forme de graphe (parcelles mères → opération �
 Onglet de la **barre latérale droite**, avec une **barre d'outils fixe** (localiser et effacer le repérage, **Nouveautés**, **plein écran** : le panneau prend toute la largeur, Échap pour en sortir ; seul le contenu défile en dessous) : on choisit la parcelle par **commune → section → numéro** (listes liées ; les communes sont celles déclarées dans les options du module, un message avertit si rien n'est déclaré ; la
 référence cadastrale IDU de 14 caractères, par exemple `38544000BI0498`, reste saisissable en repli) ; le module affiche le graphe de ses ancêtres et de ses descendants. Chaque opération (division, réunion,
 lotissement, remaniement…) indique sa date et la nature du document (arpentage, croquis de conservation…). Un clic sur une
-parcelle ou une opération en donne le détail et permet de suivre la filiation d'une autre parcelle du graphe.
+parcelle ou une opération en donne le détail et permet de suivre la filiation d'une autre parcelle du graphe. Le graphe se
+manipule comme une carte : molette ou boutons +/− pour zoomer, glisser pour se déplacer (pincement et glisser au doigt sur
+tablette ; flèches, + , − et 0 au clavier), bouton « Voir tout le graphe » pour revenir à l'ensemble. Le déplacement
+reste dans l'emprise du graphe.
 
 Les données sont des **fichiers JSON statiques, un par commune**, préparés par
 [integrator-dfi](https://github.com/vienne-condrieu-agglomeration/geo-community-integrator-dfi) à partir du jeu
@@ -77,4 +80,4 @@ est dans `src/js/extension.js`.
 
 - Le module lit les données avec `fetch` (et non `$http`, dont les intercepteurs de GEO pourraient joindre des en-têtes d'identification) :
   les données doivent être servies avec `access-control-allow-origin: *` (c'est le cas de GitHub Pages).
-- Un graphe très ramifié (plusieurs centaines de parcelles liées) est large : défiler dans le cadre, ou passer en plein écran.
+- Un graphe très ramifié (plusieurs centaines de parcelles liées) est large : zoomer et se déplacer dans le cadre (« Voir tout le graphe » pour l'ensemble), ou passer en plein écran.
