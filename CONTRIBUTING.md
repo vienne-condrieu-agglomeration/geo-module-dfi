@@ -27,8 +27,9 @@ sur **votre** branche.
 
 1. Ouvrez une *issue* pour une nouveauté, ou directement une demande de fusion pour une correction simple.
 2. Suivez les [Conventional Commits](https://www.conventionalcommits.org/fr/v1.0.0/), en français, à l'impératif.
-3. Mettez à jour le `CHANGELOG.md` (en français, pour les utilisateurs) et la version dans `package.json`,
-   `src/plugin.geoext.json` et le premier `## [x.y.z]` : `npm test` le vérifie.
+3. Décrivez votre changement sous `## [Non publié]` du `CHANGELOG.md` (en français, pour les utilisateurs). Ne touchez
+   pas au numéro de version : les mainteneurs le fixent au moment de la publication, dans `package.json`,
+   `src/plugin.geoext.json` et le premier `## [x.y.z]` du journal (`npm test` vérifie qu'ils concordent).
 4. Les commentaires du code sont en français, le code en anglais.
 5. Lancez `npm test` : il vérifie les versions, le journal des nouveautés et la logique du module (`test/dfi-data.test.mjs`).
    Ne commitez aucune donnée DFI : les tests utilisent de petits jeux écrits dans le code. Les données sont préparées par
