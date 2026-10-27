@@ -70,7 +70,14 @@ angular
             // « graph-hub » (https://lucide.dev/icons/graph-hub) : un nœud et ses enfants, comme une division de parcelle
             graphHub: _lucideSvg('<circle cx="12" cy="7" r="4"/><circle cx="4" cy="19" r="2"/><circle cx="12" cy="19" r="2"/>'
                                + '<circle cx="20" cy="19" r="2"/><path d="M8 7a4 4 0 0 0-4 4v6"/><path d="M12 11v6"/>'
-                               + '<path d="M16 7a4 4 0 0 1 4 4v6"/>')
+                               + '<path d="M16 7a4 4 0 0 1 4 4v6"/>'),
+            // « zoom-in », « zoom-out » et « scan » (https://lucide.dev/icons/zoom-in, …/zoom-out, …/scan) : zoom du graphe
+            zoomIn: _lucideSvg('<circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/>'
+                             + '<line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/>'),
+            zoomOut: _lucideSvg('<circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/>'
+                              + '<line x1="8" x2="14" y1="11" y2="11"/>'),
+            scan: _lucideSvg('<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>'
+                           + '<path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>')
         };
 
         geoApplication.executeWhenInitialized(function () {
@@ -250,7 +257,18 @@ angular
                 '      <li ng-if="!state.result.futureText.length">Devenir : aucune évolution postérieure connue dans les DFI.</li>',
                 '    </ul>',
                 '    <div class="geo-dfi-msg" ng-if="state.result.truncated">Graphe tronqué : trop de parcelles liées.</div>',
-                '    <div class="geo-dfi-graph" tabindex="-1"></div>',
+                '    <div class="geo-dfi-view">',
+                '    <div class="geo-dfi-graph-wrap">',
+                '      <div class="geo-dfi-graph" tabindex="-1"></div>',
+                '      <div class="geo-dfi-zoom" role="group" aria-label="Zoom du graphe">',
+                '        <button type="button" class="geo-dfi-iconbtn" ng-click="zoomGraph(1)" title="Zoomer (molette, +)" aria-label="Zoomer">'
+                    + _ICONS.zoomIn + '</button>',
+                '        <button type="button" class="geo-dfi-iconbtn" ng-click="zoomGraph(-1)" title="Dézoomer (molette, −)" aria-label="Dézoomer">'
+                    + _ICONS.zoomOut + '</button>',
+                '        <button type="button" class="geo-dfi-iconbtn" ng-click="fitGraph()" title="Voir tout le graphe (0)" aria-label="Voir tout le graphe">'
+                    + _ICONS.scan + '</button>',
+                '      </div>',
+                '    </div>',
                 '    <div class="geo-dfi-detail" ng-if="state.selected">',
                 '      <div class="geo-dfi-detail-title">{{ state.selected.title }}</div>',
                 '      <div ng-repeat="line in state.selected.lines">{{ line }}</div>',
@@ -264,6 +282,7 @@ angular
                 '              ng-click="focusParcel(state.selected.parcel.idu)">Voir la filiation de cette parcelle</button>',
                 '      <button type="button" class="geo-dfi-btn" ng-if="state.selected.parcel && locateEnabled"',
                 '              ng-click="locate(state.selected.parcel)" ng-disabled="state.locating">Localiser sur la carte</button>',
+                '    </div>',
                 '    </div>',
                 '  </div>',
                 '  <div class="geo-dfi-foot">',
@@ -354,13 +373,17 @@ angular
                     $timeout(_draw, 0);   // le conteneur est créé par ng-if au prochain cycle
                 }
 
+                function _graphContainer() { return $element[0].querySelector('.geo-dfi-graph'); }
+
                 function _draw() {
-                    var container = $element[0].querySelector('.geo-dfi-graph');
+                    var container = _graphContainer();
                     if (!container || !_layout) { return; }
                     _renderGraph(container, _layout, _selectedId, 'p:' + $scope.state.result.parsed.key, function (node) {
                         _apply(function () { _select(node); });
-                    });
+                    }, function (node) { return dfi.nodeTooltip(_lookup, node); });
                 }
+                $scope.zoomGraph = function (direction) { _zoomBy(_graphContainer(), direction > 0 ? _ZOOM_STEP : 1 / _ZOOM_STEP); };
+                $scope.fitGraph = function () { _fitGraph(_graphContainer()); };
 
                 function _parcelInfo(key) {
                     var p = dfi.splitKey(key, _lookup.insee);
@@ -389,7 +412,13 @@ angular
                             mothers: d.mothers.map(_parcelInfo), daughters: d.daughters.map(_parcelInfo)
                         };
                     }
-                    _draw();
+                    // Après le cycle Angular : la fiche existe, et en plein écran elle a pris sa place à côté du graphe
+                    $timeout(function () {
+                        _draw();
+                        var detail = $element[0].querySelector('.geo-dfi-detail');
+                        // Panneau étroit : la fiche est sous le graphe, on la fait venir dans la partie visible
+                        if (detail && !$scope.isFullscreen && detail.scrollIntoView) { detail.scrollIntoView({ block: 'nearest' }); }
+                    }, 0);
                 }
 
                 $scope.focusParcel = function (idu) { $scope.state.idu = idu; $scope.search(); };
@@ -529,28 +558,38 @@ angular
             return el;
         }
 
-        function _renderGraph(container, layout, selectedId, searchedId, onSelect) {
-            var keepX = container.scrollLeft, keepY = container.scrollTop;
+        function _renderGraph(container, layout, selectedId, searchedId, onSelect, tipOf) {
             container.innerHTML = '';
+            // Zone d'affichage : toute la largeur, la hauteur du graphe dans la limite du max-height du conteneur
+            // (assez haute pour les boutons de zoom)
+            var maxH = parseFloat(window.getComputedStyle(container).maxHeight) || 400;
+            var cw = container.clientWidth || layout.width;
+            var ch = Math.min(Math.max(layout.height, _GRAPH_MIN_H), maxH);
             var svg = _svg('svg', {
-                width: layout.width, height: layout.height, viewBox: '0 0 ' + layout.width + ' ' + layout.height,
+                width: '100%', height: ch,
                 'class': 'geo-dfi-svg', role: 'group', 'aria-label': 'Graphe de filiation de la parcelle'
             }, container);
             var defs = _svg('defs', {}, svg);
             var marker = _svg('marker', { id: 'geo-dfi-arrow', viewBox: '0 0 10 10', refX: '9', refY: '5',
                 markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' }, defs);
             _svg('path', { d: 'M0,0 L10,5 L0,10 z', 'class': 'geo-dfi-arrowhead' }, marker);
+            // Lignée du nœud choisi (origine et devenir) en évidence ; le reste (sœurs, co-mères, autres branches) atténué
+            var lineage = dfi.lineageOf(layout.paths, selectedId);
             layout.paths.forEach(function (p) {
-                _svg('path', { d: p.d, 'class': 'geo-dfi-edge', 'marker-end': 'url(#geo-dfi-arrow)' }, svg);
+                var inLineage = lineage[p.from] && lineage[p.to];
+                _svg('path', { d: p.d, 'class': 'geo-dfi-edge geo-dfi-edge--' + (inLineage ? 'lineage' : 'dim'),
+                    'marker-end': 'url(#geo-dfi-arrow)' }, svg);
             });
             var searchedNode = null;
             layout.nodes.forEach(function (n) {
                 var cls = 'geo-dfi-node geo-dfi-node--' + n.type
                     + (n.id === searchedId ? ' geo-dfi-node--searched' : '')
                     + (n.type === 'parcel' && !n.explored ? ' geo-dfi-node--leaf' : '')
-                    + (n.id === selectedId ? ' geo-dfi-node--selected' : '');
+                    + (n.id === selectedId ? ' geo-dfi-node--selected' : '')
+                    + (lineage[n.id] ? '' : ' geo-dfi-node--dim');
                 var g = _svg('g', { 'class': cls, transform: 'translate(' + n.x + ',' + n.y + ')', tabindex: '0', role: 'button',
                     'aria-label': n.label }, svg);
+                _svg('title', {}, g).textContent = tipOf(n);   // infobulle native au survol
                 _svg('rect', { width: n.w, height: n.h, rx: n.type === 'lot' ? 14 : 4 }, g);
                 var t = _svg('text', { x: n.w / 2, y: n.h / 2 + 4, 'text-anchor': 'middle' }, g);
                 t.textContent = n.label;
@@ -560,10 +599,128 @@ angular
                 });
                 if (n.id === searchedId) { searchedNode = n; }
             });
-            if (searchedNode && !keepX && !keepY) {   // première image : la parcelle cherchée au centre de la zone visible
-                container.scrollLeft = Math.max(0, searchedNode.x + searchedNode.w / 2 - container.clientWidth / 2);
-                container.scrollTop  = Math.max(0, searchedNode.y + searchedNode.h / 2 - container.clientHeight / 2);
-            } else { container.scrollLeft = keepX; container.scrollTop = keepY; }
+
+            var z = container.geoDfiZoom;
+            if (!z) { z = container.geoDfiZoom = {}; _enablePanZoom(container, z); }
+            if (z.layout !== layout) {
+                // Nouveau graphe : tout le graphe s'il tient à la taille réelle, sinon la parcelle cherchée au centre
+                var fit = dfi.fitView(layout.width, layout.height, cw, ch);
+                z.view = fit.scale < 1 && searchedNode
+                    ? { cx: searchedNode.x + searchedNode.w / 2, cy: searchedNode.y + searchedNode.h / 2, scale: 1 }
+                    : fit;
+                z.layout = layout;
+            }
+            // Sinon (clic sur un nœud, plein écran) : même centre et même échelle, dans la nouvelle zone
+            z.svg = svg;
+            z.cw = cw;
+            z.ch = ch;
+            _applyView(z);
+        }
+
+        // ============================================================
+        // Zoom et déplacement du graphe
+        // ============================================================
+        // La vue { cx, cy, scale } (voir dfi-data.js) vit sur le conteneur, qui survit aux redessins du SVG.
+        var _ZOOM_STEP = 1.25;
+        var _ZOOM_MAX = 3;
+        var _DRAG_THRESHOLD = 4;   // px : en deçà, un appui reste un clic sur le nœud
+        var _KEY_PAN = 40;         // px par appui sur une flèche
+        var _GRAPH_MIN_H = 110;    // px : place pour les trois boutons de zoom
+
+        // Toute vue passe par ici : elle est d'abord ramenée dans l'emprise du graphe (déplacement, zoom, clavier, plein écran)
+        function _applyView(z) {
+            z.view = dfi.clampView(z.view, z.layout.width, z.layout.height, z.cw, z.ch);
+            z.svg.setAttribute('viewBox', dfi.viewBoxOf(z.view, z.cw, z.ch));
+        }
+
+        // Zoom d'un facteur autour d'un point de l'écran (par défaut le centre de la zone) ; dézoom limité à « tout le graphe »
+        function _zoomBy(container, factor, clientX, clientY) {
+            var z = container && container.geoDfiZoom;
+            if (!z || !z.svg) { return; }
+            var r = z.svg.getBoundingClientRect();
+            var px = clientX == null ? z.view.cx : z.view.cx + (clientX - r.left - z.cw / 2) / z.view.scale;
+            var py = clientY == null ? z.view.cy : z.view.cy + (clientY - r.top - z.ch / 2) / z.view.scale;
+            var minScale = dfi.fitView(z.layout.width, z.layout.height, z.cw, z.ch).scale;
+            z.view = dfi.zoomView(z.view, factor, px, py, minScale, _ZOOM_MAX);
+            _applyView(z);
+        }
+
+        function _fitGraph(container) {
+            var z = container && container.geoDfiZoom;
+            if (!z || !z.svg) { return; }
+            z.view = dfi.fitView(z.layout.width, z.layout.height, z.cw, z.ch);
+            _applyView(z);
+        }
+
+        // Déplacement de dx, dy pixels à l'écran (le graphe suit le pointeur)
+        function _panBy(z, dx, dy) {
+            z.view = { cx: z.view.cx - dx / z.view.scale, cy: z.view.cy - dy / z.view.scale, scale: z.view.scale };
+            _applyView(z);
+        }
+
+        // Écouteurs posés une seule fois par conteneur : molette, glisser, pincement à deux doigts, clavier.
+        function _enablePanZoom(container, z) {
+            var pointers = {};   // appuis en cours : pointerId -> dernière position
+            var start = null;
+
+            container.addEventListener('wheel', function (e) {
+                e.preventDefault();
+                _zoomBy(container, e.deltaY < 0 ? _ZOOM_STEP : 1 / _ZOOM_STEP, e.clientX, e.clientY);
+            }, { passive: false });
+
+            container.addEventListener('pointerdown', function (e) {
+                if (e.button !== 0) { return; }
+                pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+                start = { x: e.clientX, y: e.clientY };
+                z.dragged = false;
+            });
+
+            container.addEventListener('pointermove', function (e) {
+                var last = pointers[e.pointerId];
+                if (!last) { return; }
+                var ids = Object.keys(pointers);
+                if (ids.length === 2) {
+                    // Pincement : zoom du rapport des écarts entre les doigts, autour de leur milieu
+                    var other = pointers[ids[0] === String(e.pointerId) ? ids[1] : ids[0]];
+                    var before = Math.hypot(last.x - other.x, last.y - other.y);
+                    var after = Math.hypot(e.clientX - other.x, e.clientY - other.y);
+                    if (before > 0) { _zoomBy(container, after / before, (e.clientX + other.x) / 2, (e.clientY + other.y) / 2); }
+                    z.dragged = true;
+                } else if (ids.length === 1) {
+                    if (!z.dragged && Math.abs(e.clientX - start.x) + Math.abs(e.clientY - start.y) > _DRAG_THRESHOLD) {
+                        // Capture seulement une fois le glisser reconnu : posée dès l'appui, elle détournerait le clic du nœud
+                        z.dragged = true;
+                        container.setPointerCapture(e.pointerId);
+                        container.classList.add('geo-dfi-graph--dragging');
+                    }
+                    if (z.dragged) { _panBy(z, e.clientX - last.x, e.clientY - last.y); }
+                }
+                pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+            });
+
+            function end(e) {
+                delete pointers[e.pointerId];
+                container.classList.remove('geo-dfi-graph--dragging');
+            }
+            container.addEventListener('pointerup', end);
+            container.addEventListener('pointercancel', end);
+
+            // Un glisser ne vaut pas un clic sur le nœud où il a commencé
+            container.addEventListener('click', function (e) {
+                if (z.dragged) { e.stopPropagation(); z.dragged = false; }
+            }, true);
+
+            // Clavier, quand un nœud du graphe a le focus : flèches pour se déplacer, + et − pour zoomer, 0 pour tout voir
+            var moves = { ArrowLeft: [_KEY_PAN, 0], ArrowRight: [-_KEY_PAN, 0], ArrowUp: [0, _KEY_PAN], ArrowDown: [0, -_KEY_PAN] };
+            container.addEventListener('keydown', function (e) {
+                if (e.ctrlKey || e.metaKey || e.altKey) { return; }
+                if (moves[e.key]) { _panBy(z, moves[e.key][0], moves[e.key][1]); }
+                else if (e.key === '+' || e.key === '=') { _zoomBy(container, _ZOOM_STEP); }
+                else if (e.key === '-') { _zoomBy(container, 1 / _ZOOM_STEP); }
+                else if (e.key === '0') { _fitGraph(container); }
+                else { return; }
+                e.preventDefault();
+            });
         }
 
         // ============================================================
@@ -689,6 +846,10 @@ angular
                 '.geo-dfi-iconbtn--on:hover{background:#1d3a66;}',
                 '.geo-dfi-icon{width:18px;height:18px;display:block;}',
                 '.geo-dfi--full .geo-dfi-graph{max-height:70vh;}',
+                // Plein écran : la fiche du nœud choisi en volet à droite du graphe, plutôt que dessous
+                '.geo-dfi--full .geo-dfi-view{display:flex;gap:12px;align-items:flex-start;}',
+                '.geo-dfi--full .geo-dfi-graph-wrap{flex:1 1 auto;min-width:0;}',
+                '.geo-dfi--full .geo-dfi-detail{flex:0 0 320px;max-height:70vh;overflow:auto;box-sizing:border-box;}',
                 'body.' + _FULLSCREEN_BODY_CLASS + ' .acf-map-controls-topright{display:none!important;}',
                 '.geo-dfi label{display:block;margin-bottom:4px;font-weight:600;}',
                 '.geo-dfi-row{display:flex;gap:6px;margin-bottom:8px;}',
@@ -712,8 +873,13 @@ angular
                 '.geo-dfi-parcel .geo-dfi-btn{margin-left:6px;font-size:12px;font-weight:400;}',
                 '.geo-dfi-idu{margin:0 6px;font-size:12px;font-weight:400;color:#555;}',
                 '.geo-dfi-summary{margin:6px 0 8px;padding-left:18px;}',
-                '.geo-dfi-graph{margin:8px 0;max-height:52vh;overflow:auto;border:1px solid #d5dae1;border-radius:4px;background:#fbfcfd;}',
+                '.geo-dfi-graph-wrap{position:relative;margin:8px 0;}',
+                // Zoom et déplacement à la main (molette, glisser, pincement) : pas de défilement ni de geste natif dans la zone
+                '.geo-dfi-graph{max-height:52vh;overflow:hidden;touch-action:none;cursor:grab;border:1px solid #d5dae1;border-radius:4px;background:#fbfcfd;}',
+                '.geo-dfi-graph--dragging{cursor:grabbing;}',
                 '.geo-dfi-svg{display:block;}',
+                '.geo-dfi-zoom{position:absolute;top:6px;right:6px;display:flex;flex-direction:column;gap:4px;}',
+                '.geo-dfi-zoom .geo-dfi-iconbtn{width:28px;height:28px;}',
                 '.geo-dfi-edge{fill:none;stroke:#8a96a8;stroke-width:1.4;}',
                 '.geo-dfi-arrowhead{fill:#8a96a8;}',
                 '.geo-dfi-node{cursor:pointer;outline:none;}',
@@ -723,6 +889,9 @@ angular
                 '.geo-dfi-node--leaf rect{stroke-dasharray:3 2;fill:#f5f7fa;}',
                 '.geo-dfi-node--searched rect{fill:#ffe2b8;stroke:#c76a00;stroke-width:2.2;}',
                 '.geo-dfi-node--selected rect{stroke:#0b6b3a;stroke-width:2.6;}',
+                '.geo-dfi-node--dim{opacity:.45;}',
+                '.geo-dfi-edge--lineage{stroke:#4a6fa5;stroke-width:2;}',
+                '.geo-dfi-edge--dim{opacity:.35;}',
                 '.geo-dfi-node:focus-visible rect{stroke:#0b6b3a;stroke-width:3;}',
                 '.geo-dfi-detail{margin:8px 0;padding:8px;border:1px solid #d5dae1;border-radius:4px;}',
                 '.geo-dfi-detail-title{margin-bottom:4px;font-weight:700;}',

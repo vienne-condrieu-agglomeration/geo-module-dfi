@@ -318,6 +318,50 @@ export function buildGraph(lookup, key, options) {
     };
 }
 
+/**
+ * Lignée d'un nœud du graphe : ses ancêtres (en remontant les arêtes) et ses descendants (en les descendant), lui compris.
+ * Les sœurs et co-mères n'en font pas partie : c'est le chemin d'origine et de devenir à mettre en évidence.
+ * Retourne un objet id -> true.
+ */
+export function lineageOf(edges, id) {
+    var up = {};
+    var down = {};
+    edges.forEach(function (e) {
+        (up[e.to] = up[e.to] || []).push(e.from);
+        (down[e.from] = down[e.from] || []).push(e.to);
+    });
+    var seen = {};
+    seen[id] = true;
+    [up, down].forEach(function (next) {
+        var stack = [id];
+        var visited = {};
+        while (stack.length) {
+            (next[stack.pop()] || []).forEach(function (n) {
+                if (!visited[n]) { visited[n] = true; seen[n] = true; stack.push(n); }
+            });
+        }
+    });
+    return seen;
+}
+
+/** Texte de l'infobulle d'un nœud du graphe (survol) : l'essentiel, sans cliquer. */
+export function nodeTooltip(lookup, node) {
+    var lines;
+    if (node.type === 'parcel') {
+        var s = parcelSummary(lookup, node.key);
+        lines = ['Parcelle ' + parcelLabel(node.key)]
+            .concat(s.origin.map(function (l) { return 'Origine : ' + l.kind.toLowerCase() + ' le ' + l.dateLabel; }))
+            .concat(s.future.length
+                ? s.future.map(function (l) { return 'Devenir : ' + l.kind.toLowerCase() + ' le ' + l.dateLabel; })
+                : ['Devenir : aucune évolution postérieure connue']);
+    } else {
+        var d = describeLot(lookup.lots[node.index]);
+        lines = [d.kind + ' — ' + d.natureLabel, d.dateLabel + ', DFI n° ' + d.dfi,
+                 d.mothers.length + ' mère(s), ' + d.daughters.length + ' fille(s)' + (node.hidden ? ', dont ' + node.hidden + ' non affichée(s)' : '')];
+    }
+    return lines.concat(['Cliquer pour le détail']).join('\n');
+}
+
 /** Synthèse en français, comme dans l'outil de Romain : origine (lots où la parcelle est fille) et devenir. */
 export function parcelSummary(lookup, key) {
     return {
@@ -398,6 +442,38 @@ export function layoutGraph(graph, labelOf, options) {
         width: maxW + 2 * o.margin,
         height: rows.length * o.nodeH + (rows.length - 1) * o.gapY + 2 * o.margin
     };
+}
+
+// ─── Zoom et déplacement du graphe ───────────────────────────────────────────────────────────────────
+// Une vue est { cx, cy, scale } : le point du graphe au centre de la zone d'affichage et l'échelle (1 = taille réelle).
+// Elle ne dépend pas de la taille de la zone : passer en plein écran garde le même centre et la même échelle.
+
+/** Vue qui montre tout le graphe (width × height) dans une zone cw × ch, sans agrandir au-delà de la taille réelle. */
+export function fitView(width, height, cw, ch) {
+    return { cx: width / 2, cy: height / 2, scale: Math.min(1, cw / width, ch / height) };
+}
+
+/**
+ * Ramène la vue dans l'emprise du graphe, pour ne jamais se perdre dans le vide : la zone affichée ne dépasse pas les bords
+ * du graphe ; dans le sens où le graphe est plus petit que la zone, il reste centré.
+ */
+export function clampView(view, width, height, cw, ch) {
+    function clamp(c, size, visible) { return size <= visible ? size / 2 : Math.min(size - visible / 2, Math.max(visible / 2, c)); }
+    return { cx: clamp(view.cx, width, cw / view.scale), cy: clamp(view.cy, height, ch / view.scale), scale: view.scale };
+}
+
+/** Zoom d'un facteur `factor` (> 1 : rapproche) qui garde fixe à l'écran le point (px, py) du graphe ; échelle bornée. */
+export function zoomView(view, factor, px, py, minScale, maxScale) {
+    var scale = Math.min(maxScale, Math.max(minScale, view.scale * factor));
+    var k = view.scale / scale;
+    return { cx: px - (px - view.cx) * k, cy: py - (py - view.cy) * k, scale: scale };
+}
+
+/** Attribut `viewBox` du SVG pour une vue dans une zone cw × ch. */
+export function viewBoxOf(view, cw, ch) {
+    var w = cw / view.scale;
+    var h = ch / view.scale;
+    return [view.cx - w / 2, view.cy - h / 2, w, h].join(' ');
 }
 
 // ─── Localisation d'une parcelle (API Carto Cadastre de l'IGN) ───────────────────────────────────────

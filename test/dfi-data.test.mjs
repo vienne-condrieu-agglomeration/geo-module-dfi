@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     SUPPORTED_FORMAT, DfiError, parseIdu, parcelKey, splitKey, parcelLabel, formatDate, dataUrl, loadJson,
     checkIndex, loadIndex, loadCommune, buildLookup, describeLot, buildGraph, parcelSummary, layoutGraph,
+    fitView, clampView, zoomView, viewBoxOf, lineageOf, nodeTooltip,
     DEFAULT_CADASTRE_URL, cadastreUrl, geometryBbox, expandBbox, extentForVisible, fitExtent, parseCadastre, loadParcel, formatArea,
     communeOptions, sectionOptions, numberOptions, normalizeNumber, selectionIdu
 } from '../src/js/dfi-data.js';
@@ -178,6 +179,57 @@ await test('layoutGraph : un seul nœud', () => {
     const l = layoutGraph(buildGraph(lookup, 'ZZ0001'), () => 'ZZ 1');
     assert.equal(l.nodes.length, 1);
     assert.equal(l.paths.length, 0);
+});
+
+// ── Détail d'un nœud : lignée et infobulle ──────────────────────────────────────────────────────────────────────
+
+await test('lineageOf : ancêtres et descendants, sans les sœurs', () => {
+    const g = buildGraph(lookup, 'AH0264');
+    const lin = lineageOf(g.edges, 'p:AH0264');
+    ['p:AH0264', 'l:1', 'p:AH0261', 'l:0', 'p:AH0065', 'p:AH0072', 'l:2', 'p:AH0280', 'p:AH0281']
+        .forEach((id) => assert.ok(lin[id], id + ' dans la lignée'));
+    assert.ok(!lin['p:AH0300'], 'AH 300, sœur de AH 264, hors lignée');
+    assert.deepEqual(Object.keys(lineageOf(g.edges, 'p:AH0280')).sort(),
+        ['l:0', 'l:1', 'l:2', 'p:AH0065', 'p:AH0072', 'p:AH0261', 'p:AH0264', 'p:AH0280'], 'AH 280 : sa sœur AH 281 hors lignée');
+    assert.deepEqual(lineageOf([], 'p:X'), { 'p:X': true }, 'nœud isolé');
+});
+
+await test('nodeTooltip : parcelle et opération', () => {
+    assert.equal(nodeTooltip(lookup, { type: 'parcel', key: 'AH0264' }),
+        'Parcelle AH 264\nOrigine : division le 10/05/2001\nDevenir : division le 28/01/2008\nCliquer pour le détail');
+    assert.equal(nodeTooltip(lookup, { type: 'parcel', key: 'AH0281' }).split('\n')[2], 'Devenir : aucune évolution postérieure connue');
+    assert.equal(nodeTooltip(lookup, { type: 'lot', index: 3, hidden: 0 }),
+        'Disparition — Croquis de conservation\n05/01/2010, DFI n° 0000300\n1 mère(s), 0 fille(s)\nCliquer pour le détail');
+    assert.ok(nodeTooltip(lookup, { type: 'lot', index: 1, hidden: 1 }).includes('dont 1 non affichée(s)'));
+});
+
+// ── Zoom et déplacement du graphe ────────────────────────────────────────────────────────────────────────────
+
+await test('fitView : tout le graphe visible, jamais agrandi', () => {
+    assert.deepEqual(fitView(1000, 400, 500, 400), { cx: 500, cy: 200, scale: 0.5 });
+    assert.equal(fitView(200, 100, 500, 400).scale, 1, 'un petit graphe reste à la taille réelle');
+});
+
+await test('clampView : la vue reste dans l\'emprise du graphe', () => {
+    const at = (cx, cy, scale) => ({ cx, cy, scale });
+    assert.deepEqual(clampView(at(30, 980, 1), 2000, 1000, 500, 400), at(250, 800, 1), 'coin bas gauche : bords du graphe');
+    assert.deepEqual(clampView(at(1000, 500, 1), 2000, 1000, 500, 400), at(1000, 500, 1), 'au milieu : inchangée');
+    assert.deepEqual(clampView(at(-5000, 5000, 2), 2000, 1000, 500, 400), at(125, 900, 2), 'zoomée : zone visible plus petite');
+    assert.deepEqual(clampView(at(0, 0, 1), 300, 1000, 500, 400), at(150, 200, 1), 'graphe plus étroit que la zone : centré');
+});
+
+await test('zoomView : le point visé reste fixe à l\'écran ; échelle bornée', () => {
+    const v = { cx: 100, cy: 100, scale: 1 };
+    const z = zoomView(v, 2, 150, 100, 0.2, 3);
+    assert.equal(z.scale, 2);
+    assert.equal((150 - z.cx) * z.scale, (150 - v.cx) * v.scale, 'même écart au centre, à l\'écran');
+    assert.equal(zoomView(v, 10, 0, 0, 0.2, 3).scale, 3);
+    assert.equal(zoomView(v, 0.01, 0, 0, 0.2, 3).scale, 0.2);
+    assert.deepEqual(zoomView(v, 10, 0, 0, 1, 1), v, 'échelle déjà en butée : la vue ne bouge pas');
+});
+
+await test('viewBoxOf : zone vue à l\'échelle', () => {
+    assert.equal(viewBoxOf({ cx: 100, cy: 50, scale: 2 }, 400, 200), '0 0 200 100');
 });
 
 // ── Localisation (API Carto Cadastre de l'IGN) : réponse de la forme réelle (MultiPolygon EPSG:4326) ──────────

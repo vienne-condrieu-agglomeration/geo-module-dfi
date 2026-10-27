@@ -11,6 +11,21 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+### Ajouté
+
+- **Zoom et déplacement du graphe**, comme sur une carte : molette (centrée sur le pointeur), boutons +, − et « Voir tout le
+  graphe », glisser pour se déplacer, pincement et glisser au doigt sur tablette, et au clavier (flèches, + et −, 0 pour tout
+  voir). Le déplacement reste dans l'emprise du graphe, pour ne jamais se perdre dans le vide. Le graphe s'ouvre comme avant : en entier s'il tient, sinon centré sur la parcelle cherchée, à la taille réelle
+- **Infobulle** au survol d'un nœud du graphe : origine et devenir d'une parcelle ; nature, date et nombre de parcelles d'une
+  opération
+- **Lignée en évidence** : le chemin d'origine et de devenir de la parcelle (ou de l'opération) choisie est souligné, le reste du
+  graphe (parcelles sœurs, autres branches) est atténué
+
+### Modifié
+
+- En **plein écran**, la fiche du nœud choisi s'affiche dans un **volet à droite** du graphe, et non plus dessous ; dans le panneau
+  étroit, elle reste sous le graphe mais vient d'elle-même dans la partie visible
+
 ## [0.3.1] — 2026-10-26
 
 ### Modifié
