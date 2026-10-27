@@ -11,6 +11,11 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+### Modifié
+
+- Le **guide de contribution** (`CONTRIBUTING.md`) précise que le numéro de version est fixé par les mainteneurs à la
+  publication : une contribution décrit seulement son changement sous « Non publié » dans ce journal
+
 ## [0.3.1] — 2026-10-26
 
 ### Modifié
