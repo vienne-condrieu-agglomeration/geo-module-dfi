@@ -1,5 +1,7 @@
 # geo-dfi — Filiation des parcelles (DFI, DGFiP)
 
+![Aperçu : recherche de la parcelle AI 560 à Saint-Georges-d'Oléron, graphe de filiation, localisation sur la carte puis détail d'une parcelle mère](docs/apercu.gif)
+
 Module GEO qui affiche l'**historique de filiation d'une parcelle cadastrale** : de quelles parcelles elle est issue et
 ce qu'elle est devenue, sous forme de graphe (parcelles mères → opération → parcelles filles).
 
