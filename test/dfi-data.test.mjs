@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     SUPPORTED_FORMAT, DfiError, parseIdu, parcelKey, splitKey, parcelLabel, formatDate, dataUrl, loadJson,
     checkIndex, loadIndex, loadCommune, buildLookup, describeLot, buildGraph, parcelSummary, layoutGraph,
-    fitView, clampView, zoomView, viewBoxOf, lineageOf, nodeTooltip,
+    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, lineageOf, nodeTooltip,
     DEFAULT_CADASTRE_URL, cadastreUrl, geometryBbox, expandBbox, extentForVisible, fitExtent, parseCadastre, loadParcel, formatArea,
     communeOptions, sectionOptions, numberOptions, normalizeNumber, selectionIdu, mapTargets, mapLimit, mergeBbox
 } from '../src/js/dfi-data.js';
@@ -226,6 +226,32 @@ await test('zoomView : le point visé reste fixe à l\'écran ; échelle bornée
     assert.equal(zoomView(v, 10, 0, 0, 0.2, 3).scale, 3);
     assert.equal(zoomView(v, 0.01, 0, 0, 0.2, 3).scale, 0.2);
     assert.deepEqual(zoomView(v, 10, 0, 0, 1, 1), v, 'échelle déjà en butée : la vue ne bouge pas');
+});
+
+await test('revealView : déplacement minimal pour voir le nœud', () => {
+    const v = { cx: 500, cy: 500, scale: 1 };
+    const node = (x, y) => ({ x, y, w: 60, h: 28 });
+    assert.deepEqual(revealView(v, node(480, 490), 400, 200, 12), v, 'déjà visible : inchangée');
+    assert.deepEqual(revealView(v, node(480, 700), 400, 200, 12), { cx: 500, cy: 640, scale: 1 }, 'sous la zone : remonte au plus juste');
+    assert.deepEqual(revealView(v, node(100, 490), 400, 200, 12), { cx: 288, cy: 500, scale: 1 }, 'à gauche de la zone');
+    assert.deepEqual(revealView(v, { x: 0, y: 490, w: 500, h: 28 }, 400, 200, 12).cx, 250, 'plus large que la zone : centré');
+});
+
+await test('panelHeight : jamais au-delà de la fenêtre', () => {
+    assert.equal(panelHeight(130, 927, 992, 862), 797, 'parent plus haut que la fenêtre : coupé au bas de la fenêtre');
+    assert.equal(panelHeight(130, 927, 800, 670), 670, 'parent plus court : bas du parent');
+    assert.equal(panelHeight(130, 927, 150, 20), 797, 'parent sans vraie hauteur : bas de la fenêtre');
+    assert.equal(panelHeight(800, 900, 900, 500), 240, 'hauteur minimale');
+});
+
+await test('summaryHeadline et lotShortText : synthèse courte', () => {
+    assert.equal(summaryHeadline({ origin: [], future: [{}] }), 'Origine : aucune opération · Devenir : 1 opération');
+    assert.equal(summaryHeadline({ origin: [{}, {}], future: [] }), 'Origine : 2 opérations · Devenir : aucune opération');
+    const lot = { kind: 'Division', dateLabel: '18/04/1989', mothers: ['AW0089'], daughters: ['AW0399', 'AW0400', 'AW0401'] };
+    assert.equal(lotShortText(lot, 'origin'), 'Origine : Division le 18/04/1989, de AW 89');
+    assert.equal(lotShortText(lot, 'future'), 'Devenir : Division le 18/04/1989, en AW 399, AW 400, AW 401');
+    assert.equal(lotShortText(lot, 'future', 2), 'Devenir : Division le 18/04/1989, en AW 399, AW 400 et 1 autre(s)');
+    assert.equal(lotShortText({ kind: 'Disparition', dateLabel: '19/01/1994', mothers: ['AW0089'], daughters: [] }, 'future'), 'Devenir : Disparition le 19/01/1994');
 });
 
 await test('viewBoxOf : zone vue à l\'échelle', () => {

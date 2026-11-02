@@ -11,6 +11,20 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+## [0.5.0] — 2026-11-02
+
+### Modifié
+
+- **Le graphe prend toute la place disponible** : il occupe désormais toute la hauteur restante du panneau et s'adapte à sa taille, sans défilement du panneau
+- **Recherche repliée** : une fois la parcelle affichée, la recherche tient sur une ligne ; le bouton « Modifier » la rouvre
+- **Synthèse en une ligne** : à déplier pour voir les opérations en bref. Le type de document et le numéro de DFI restent dans la fiche
+- **Fiche d'un nœud** sous le graphe, qui se réduit pour lui laisser la place : elle défile seule et se ferme d'une croix
+- « Localiser toute la filiation » devient un bouton de la barre d'outils
+
+### Corrigé
+
+- Le **bas du graphe** reste accessible : le panneau ne dépasse plus du bas de la fenêtre et la molette n'a plus de défilement à contrarier
+
 ## [0.4.1] — 2026-11-02
 
 ### Corrigé

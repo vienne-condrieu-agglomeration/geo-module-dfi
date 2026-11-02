@@ -9,10 +9,10 @@ ce qu'elle est devenue, sous forme de graphe (parcelles mères → opération �
 
 ## Fonctionnement
 
-Onglet de la **barre latérale droite**, avec une **barre d'outils fixe** (localiser et effacer le repérage, **Nouveautés**, **plein écran** : le panneau prend toute la largeur, Échap pour en sortir ; **visite guidée** « ? » ; seul le contenu défile en dessous) : on choisit la parcelle par **commune → section → numéro** (listes liées ; les communes sont celles déclarées dans les options du module, un message avertit si rien n'est déclaré ; la
-référence cadastrale IDU de 14 caractères, par exemple `38544000BI0498`, reste saisissable en repli) ; le module affiche le graphe de ses ancêtres et de ses descendants. Chaque opération (division, réunion,
+Onglet de la **barre latérale droite**, avec une **barre d'outils fixe** (localiser la parcelle, localiser toute la filiation et effacer le repérage, **Nouveautés**, **plein écran** : le panneau prend toute la largeur, Échap pour en sortir ; **visite guidée** « ? ») : on choisit la parcelle par **commune → section → numéro** (listes liées ; les communes sont celles déclarées dans les options du module, un message avertit si rien n'est déclaré ; la
+référence cadastrale IDU de 14 caractères, par exemple `38544000BI0498`, reste saisissable en repli) ; le module affiche le graphe de ses ancêtres et de ses descendants, sur toute la hauteur restante du panneau. La recherche se replie alors sur une ligne (« Modifier » la rouvre), au-dessus d'une synthèse d'une ligne à déplier. Chaque opération (division, réunion,
 lotissement, remaniement…) indique sa date et la nature du document (arpentage, croquis de conservation…). Le survol d'un
-nœud en donne l'essentiel (infobulle) ; un clic sur une parcelle ou une opération en donne le détail (dans un volet à droite du
+nœud en donne l'essentiel (infobulle) ; un clic sur une parcelle ou une opération en donne le détail (dans une fiche sous le graphe, qui se réduit pour lui laisser la place, ou dans un volet à droite du
 graphe en plein écran), met en évidence sa lignée (origine et devenir) et permet de suivre la filiation d'une autre parcelle du
 graphe. Le graphe se
 manipule comme une carte : molette ou boutons +/− pour zoomer, glisser pour se déplacer (pincement et glisser au doigt sur

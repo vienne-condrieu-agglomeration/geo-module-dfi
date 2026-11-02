@@ -370,6 +370,38 @@ export function parcelSummary(lookup, key) {
     };
 }
 
+/**
+ * Hauteur du panneau qui commence à `top` : jusqu'au bas de son parent s'il a une vraie hauteur, sans jamais dépasser le
+ * bas de la fenêtre (le bas serait inaccessible). Au moins 240 px : en deçà, le corps du panneau défile.
+ */
+export function panelHeight(top, windowHeight, parentBottom, parentHeight) {
+    var bottom = parentHeight > 200 ? Math.min(windowHeight, parentBottom) : windowHeight;
+    return Math.max(240, Math.round(bottom - top));
+}
+
+/** Résumé en une ligne de parcelSummary, pour la synthèse repliée. */
+export function summaryHeadline(summary) {
+    function count(lots) {
+        if (!lots.length) { return 'aucune opération'; }
+        return lots.length === 1 ? '1 opération' : lots.length + ' opérations';
+    }
+    return 'Origine : ' + count(summary.origin) + ' · Devenir : ' + count(summary.future);
+}
+
+/**
+ * Ligne courte d'une opération de la synthèse : les parcelles de l'autre côté du lot (mères pour l'origine, filles pour
+ * le devenir), au plus `max`. Le type de document et le numéro de DFI restent dans la fiche.
+ */
+export function lotShortText(lot, side, max) {
+    var limit = max || 6;
+    var parcels = side === 'origin' ? lot.mothers : lot.daughters;
+    var head = (side === 'origin' ? 'Origine : ' : 'Devenir : ') + lot.kind + ' le ' + lot.dateLabel;
+    if (!parcels.length) { return head; }
+    var shown = parcels.slice(0, limit).map(parcelLabel).join(', ');
+    var rest = parcels.length - limit;
+    return head + (side === 'origin' ? ', de ' : ', en ') + shown + (rest > 0 ? ' et ' + rest + ' autre(s)' : '');
+}
+
 // ─── Mise en page ────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -467,6 +499,21 @@ export function zoomView(view, factor, px, py, minScale, maxScale) {
     var scale = Math.min(maxScale, Math.max(minScale, view.scale * factor));
     var k = view.scale / scale;
     return { cx: px - (px - view.cx) * k, cy: py - (py - view.cy) * k, scale: scale };
+}
+
+/**
+ * Vue déplacée au minimum pour que le nœud `node` ({ x, y, w, h }) soit dans la zone cw × ch, à `margin` pixels des bords.
+ * Nœud plus grand que la zone : on le centre. La vue rendue n'est pas bornée à l'emprise (voir clampView).
+ */
+export function revealView(view, node, cw, ch, margin) {
+    function shift(c, start, size, visible) {
+        var m = (margin || 0) / view.scale;
+        if (size + 2 * m >= visible) { return start + size / 2; }
+        if (start - m < c - visible / 2) { return start - m + visible / 2; }
+        if (start + size + m > c + visible / 2) { return start + size + m - visible / 2; }
+        return c;
+    }
+    return { cx: shift(view.cx, node.x, node.w, cw / view.scale), cy: shift(view.cy, node.y, node.h, ch / view.scale), scale: view.scale };
 }
 
 /** Attribut `viewBox` du SVG pour une vue dans une zone cw × ch. */
