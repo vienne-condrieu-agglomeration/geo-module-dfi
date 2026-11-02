@@ -49,8 +49,11 @@ module.exports = {
   },
   resolve: {
     extensions: [".js"],
-    // Force la résolution du build CJS de driver.js (comme webpack.publish.config.js et le module Panoramax).
-    mainFields: ["browser", "main"]
+    // Build CJS de driver.js (le build « module » est en syntaxe que webpack 4 ne lit pas). Alias limité à ce seul paquet
+    // (`$` : correspondance exacte, `driver.js/dist/driver.css` reste résolu normalement), comme le module Panoramax.
+    alias: {
+      "driver.js$": path.join(__dirname, "node_modules/driver.js/dist/driver.js.cjs")
+    }
   },
   optimization: {
     minimize: true

@@ -11,6 +11,12 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+## [0.4.1] — 2026-11-02
+
+### Corrigé
+
+- **Visite guidée** : le nom de l'outil saisi dans le Générateur s'affiche tel quel dans la bulle d'accroche, même s'il contient des caractères spéciaux (`<`, `&`…)
+
 ## [0.4.0] — 2026-11-02
 
 ### Ajouté

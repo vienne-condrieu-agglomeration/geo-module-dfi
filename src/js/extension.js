@@ -1017,6 +1017,13 @@ angular
         // flottante au milieu de l'écran). On vise l'icône elle-même (classe posée par GEO, voir icon dans _registerWidget) :
         // son ancêtre cliquable peut être large et décaler la bulle (constaté avec Panoramax). Si GEO en rend plusieurs, on
         // garde la plus à droite parmi les visibles, celle de la barre latérale droite.
+        // Driver.js affiche titres et descriptions comme du HTML : toute valeur saisie (nom de l'outil) est échappée.
+        function _escapeHtml(text) {
+            return String(text).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
         function _startTeaser(attempt) {
             if (!_tourPending() || _currentScope) { return; }   // déjà vue, ou panneau déjà ouvert
             var icon = null;
@@ -1034,7 +1041,7 @@ angular
             teaser.setSteps([{
                 element: icon,
                 popover: {
-                    title: 'Nouveau : ' + _toolName,
+                    title: 'Nouveau : ' + _escapeHtml(_toolName),
                     description: 'Ouvrez cet onglet pour savoir d\'où vient une parcelle et ce qu\'elle est devenue (divisions, '
                         + 'réunions…). Une courte visite guidée vous attend à l\'ouverture.',
                     side: 'left', align: 'center', showButtons: ['close']
