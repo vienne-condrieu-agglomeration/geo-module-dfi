@@ -20,6 +20,8 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 - **Synthèse en une ligne** : à déplier pour voir les opérations en bref. Le type de document et le numéro de DFI restent dans la fiche
 - **Fiche d'un nœud** sous le graphe, qui se réduit pour lui laisser la place : elle défile seule et se ferme d'une croix
 - « Localiser toute la filiation » devient un bouton de la barre d'outils
+- **Synthèse expliquée par des badges** : « Origine » et « Devenir » sont des badges avec le nombre d'opérations ; leur sens (et celui d'« opération ») s'affiche au survol et en clair dans la synthèse dépliée, donc aussi au clavier et sur tablette
+- **Un seul bouton pour localiser et effacer** : l'épingle de la barre d'outils localise la parcelle ; une fois un repérage affiché (quelle que soit son origine), elle devient active et un second clic l'efface
 
 ### Corrigé
 

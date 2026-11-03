@@ -212,12 +212,16 @@ angular
                 '    <span class="geo-dfi-toolbar-icon">' + _ICONS.graphHub + '</span>',
                 '    <span class="geo-dfi-title">{{ title }}</span>',
                 '    <div class="geo-dfi-bar-actions">',
-                '      <button type="button" class="geo-dfi-iconbtn" ng-if="locateEnabled && state.result" ng-click="locate(state.result.parsed)"',
-                '              ng-disabled="state.locating" title="Localiser la parcelle sur la carte" aria-label="Localiser la parcelle sur la carte">' + _ICONS.mapPin + '</button>',
+                '      <button type="button" class="geo-dfi-iconbtn geo-dfi-locate" ng-class="{\'geo-dfi-iconbtn--on\': state.located}"',
+                '              ng-if="locateEnabled && state.result" ng-click="toggleLocation()" ng-disabled="state.locating && !state.located"',
+                '              aria-pressed="{{ state.located ? \'true\' : \'false\' }}"',
+                '              title="{{ state.located ? \'Effacer le repérage de la carte\' : \'Localiser la parcelle sur la carte\' }}"',
+                '              aria-label="{{ state.located ? \'Effacer le repérage de la carte\' : \'Localiser la parcelle sur la carte\' }}">',
+                '        <span ng-if="!state.located">' + _ICONS.mapPin + '</span>',
+                '        <span ng-if="state.located">' + _ICONS.mapPinOff + '</span>',
+                '      </button>',
                 '      <button type="button" class="geo-dfi-iconbtn geo-dfi-locate-all" ng-if="locateEnabled && state.result.hasHistory" ng-click="locateAll()"',
                 '              ng-disabled="state.locating" title="Localiser toute la filiation sur la carte" aria-label="Localiser toute la filiation sur la carte">' + _ICONS.map + '</button>',
-                '      <button type="button" class="geo-dfi-iconbtn" ng-if="state.located" ng-click="clearLocation()"',
-                '              title="Effacer le repérage" aria-label="Effacer le repérage">' + _ICONS.mapPinOff + '</button>',
                 '      <button type="button" class="geo-dfi-iconbtn" ng-click="openChangelog()" title="{{ changelogTitle }}" aria-label="Nouveautés du module">',
                 '        ' + _ICONS.sparkles,
                 '        <i class="geo-dfi-dot-new" ng-if="changelogNew()"></i>',
@@ -290,10 +294,17 @@ angular
                 '    <div class="geo-dfi-msg" ng-if="!state.result.hasHistory">Aucune filiation connue dans les DFI pour cette parcelle. ',
                 '      L\'historique informatisé commence vers 1988-1990 et les remembrements n\'y figurent pas.</div>',
                 '    <details class="geo-dfi-summary" ng-if="state.result.hasHistory">',
-                '      <summary>{{ state.result.headline }}</summary>',
+                '      <summary aria-label="{{ state.result.headline }}">',
+                '        <span class="geo-dfi-badge geo-dfi-badge--origin" title="{{ hint.origin }}">Origine <b>{{ state.result.originCount }}</b></span>',
+                '        <span class="geo-dfi-badge geo-dfi-badge--future" title="{{ hint.future }}">Devenir <b>{{ state.result.futureCount }}</b></span>',
+                '        <span class="geo-dfi-summary-more">détail</span>',
+                '      </summary>',
+                '      <p class="geo-dfi-hint"><span class="geo-dfi-badge geo-dfi-badge--origin">Origine</span> {{ hint.origin }}</p>',
+                '      <p class="geo-dfi-hint"><span class="geo-dfi-badge geo-dfi-badge--future">Devenir</span> {{ hint.future }}</p>',
+                '      <p class="geo-dfi-hint"><b>Opération</b> {{ hint.operation }}</p>',
                 '      <ul>',
-                '        <li ng-repeat="t in state.result.originText track by $index">{{ t }}</li>',
-                '        <li ng-repeat="t in state.result.futureText track by $index">{{ t }}</li>',
+                '        <li ng-repeat="t in state.result.items track by $index" title="{{ hint[t.side] }}">',
+                '          <span class="geo-dfi-badge" ng-class="\'geo-dfi-badge--\' + t.side">{{ t.side === \'origin\' ? \'Origine\' : \'Devenir\' }}</span> {{ t.text }}</li>',
                 '      </ul>',
                 '    </details>',
                 '    <div class="geo-dfi-msg" ng-if="state.result.truncated">Graphe tronqué : trop de parcelles liées.</div>',
@@ -337,11 +348,20 @@ angular
             ].join('\n');
         }
 
+        // « Origine : division le … » → « division le … » : le badge porte déjà le mot
+        function _stripSide(text) { return text.replace(/^(Origine|Devenir) : /, ''); }
+
         function _buildController() {
             return ['$scope', '$element', '$timeout', function ($scope, $element, $timeout) {
                 _currentScope = $scope;
                 _cancelTeaser();   // panneau ouvert : l'accroche sur l'onglet a rempli son rôle
                 $scope.title     = _toolName;
+                // Explication des termes de la synthèse (survol des badges, et texte visible à l'ouverture de la synthèse)
+                $scope.hint = {
+                    origin: 'les opérations dont la parcelle est issue (elle en est une fille).',
+                    future: 'les opérations qui l\'ont transformée ensuite (elle en est une mère).',
+                    operation: ': un acte cadastral (division, réunion, changement de numérotation…) qui remplace des parcelles mères par des parcelles filles.'
+                };
                 $scope.isFullscreen = false;
                 $scope.locateEnabled = _locateEnabled;
                 $scope.source    = _source;
@@ -430,8 +450,9 @@ angular
                     st.result = {
                         parsed: parsed, idu: parsed.idu, label: dfi.parcelLabel(parsed.key), hasHistory: graph.hasHistory,
                         truncated: graph.truncated, commune: _communeName(parsed.insee), headline: dfi.summaryHeadline(summary),
-                        originText: summary.origin.map(function (l) { return dfi.lotShortText(l, 'origin'); }),
-                        futureText: summary.future.map(function (l) { return dfi.lotShortText(l, 'future'); })
+                        originCount: summary.origin.length, futureCount: summary.future.length,
+                        items: summary.origin.map(function (l) { return { side: 'origin', text: _stripSide(dfi.lotShortText(l, 'origin')) }; })
+                            .concat(summary.future.map(function (l) { return { side: 'future', text: _stripSide(dfi.lotShortText(l, 'future')) }; }))
                     };
                     st.searchOpen = false;
                     _layout = dfi.layoutGraph(graph, function (n) {
@@ -638,6 +659,13 @@ angular
                     if ($scope.isFullscreen) { _setFullscreen(false); wait = 450; }
                     $timeout(fn, wait);
                 }
+
+                // Bouton à bascule de la barre d'outils : actif dès qu'un repérage est affiché, d'où qu'il vienne
+                // (parcelle, filiation entière ou fiche d'un nœud) ; un clic l'efface alors en entier.
+                $scope.toggleLocation = function () {
+                    if ($scope.state.located) { $scope.clearLocation(); }
+                    else if ($scope.state.result) { $scope.locate($scope.state.result.parsed); }
+                };
 
                 $scope.clearLocation = function () {
                     _clearHighlight();
@@ -1171,7 +1199,7 @@ angular
                     + 'la recherche se replie : « Modifier » la rouvre.', 'search',
                     [_btn('Ne plus afficher', function () { _setTourState('never'); tour.destroy(); }, true), next]),
                 step('summary', _inPanel('.geo-dfi-summary', '.geo-dfi-result'), 'La synthèse',
-                    'D\'où vient la parcelle et ce qu\'elle est devenue, en une ligne : dépliez-la pour le détail des opérations.'),
+                    'D\'où vient la parcelle (Origine) et ce qu\'elle est devenue (Devenir), avec le nombre d\'opérations. Survolez un badge, ou dépliez la synthèse : les termes y sont expliqués.'),
                 step('graph', _inPanel('.geo-dfi-graph-wrap'), 'Lire le graphe',
                     'En haut les parcelles mères, en bas les filles, reliées par l\'opération qui les a créées.<br>'
                     + key('searched') + 'parcelle cherchée<br>'
@@ -1265,7 +1293,13 @@ angular
                 '.geo-dfi-result{flex:1 1 auto;min-height:280px;display:flex;flex-direction:column;}',
                 '.geo-dfi-result>*{flex:none;}',
                 '.geo-dfi-summary{margin:0 0 6px;font-size:12px;}',
-                '.geo-dfi-summary summary{cursor:pointer;}',
+                '.geo-dfi-summary summary{cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:6px;}',
+                '.geo-dfi-summary-more{margin-left:auto;font-size:11px;color:#555;text-decoration:underline;}',
+                '.geo-dfi-badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;cursor:help;',
+                'border:1px solid #4a6fa5;background:#e8eef8;color:#1d3a66;}',
+                '.geo-dfi-badge b{margin-left:2px;}',
+                '.geo-dfi-badge--future{border-color:#b5651d;background:#fbeedd;color:#7a3f0b;}',
+                '.geo-dfi-hint{margin:4px 0 0;font-size:11px;color:#444;}',
                 '.geo-dfi-summary ul{margin:4px 0 0;padding-left:18px;max-height:96px;overflow:auto;}',
                 '.geo-dfi-result>.geo-dfi-view{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:6px;}',
                 '.geo-dfi-graph-wrap{position:relative;flex:1 1 auto;min-width:0;min-height:130px;}',
