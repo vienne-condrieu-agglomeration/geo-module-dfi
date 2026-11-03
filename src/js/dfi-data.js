@@ -654,15 +654,40 @@ export function parseCadastre(json, expectedIdu) {
              commune: props.nom_com || '' };
 }
 
-/** Interroge l'API Carto pour une parcelle ; même fetch sans identification que pour les données. */
-export function loadParcel(fetchFn, base, p) {
-    var url = cadastreUrl(base, p);
+// Même fetch sans identification que pour les données
+function _fetchCadastre(fetchFn, url) {
     return fetchFn(url, { credentials: 'omit' }).then(function (response) {
         if (!response.ok) { throw new DfiError('http', 'Le service cadastral a répondu ' + response.status + '.'); }
         return response.json().catch(function () { throw new DfiError('json', 'Réponse illisible du service cadastral.'); });
     }, function () {
         throw new DfiError('network', 'Service cadastral inaccessible (réseau ou accès bloqué) : ' + url);
-    }).then(function (json) { return parseCadastre(json, p.insee + (p.prefix || '000') + p.section + p.number); });
+    });
+}
+
+/** Interroge l'API Carto pour une parcelle. */
+export function loadParcel(fetchFn, base, p) {
+    return _fetchCadastre(fetchFn, cadastreUrl(base, p)).then(function (json) {
+        return parseCadastre(json, p.insee + (p.prefix || '000') + p.section + p.number);
+    });
+}
+
+/** Adresse de l'API Carto pour la parcelle située en un point (longitude, latitude). */
+export function parcelAtUrl(base, lon, lat) {
+    return String(base || DEFAULT_CADASTRE_URL).replace(/\?.*$/, '') + '?geom='
+        + encodeURIComponent(JSON.stringify({ type: 'Point', coordinates: [lon, lat] }));
+}
+
+/** Parcelle située en un point (comme parseCadastre), ou null s'il n'y en a pas (rue, rivière, hors de France). */
+export function loadParcelAt(fetchFn, base, lon, lat) {
+    return _fetchCadastre(fetchFn, parcelAtUrl(base, lon, lat)).then(function (json) {
+        if (!json || json.type !== 'FeatureCollection' || !Array.isArray(json.features)) {
+            throw new DfiError('json', 'Réponse inattendue du service cadastral.');
+        }
+        var found = json.features.filter(function (f) { return f && f.geometry && f.properties && f.properties.idu; })[0];
+        if (!found) { return null; }
+        var idu = String(found.properties.idu).toUpperCase();
+        return Object.assign(parseCadastre(json, idu), { idu: idu });
+    });
 }
 
 // ─── Toute la filiation sur la carte ─────────────────────────────────────────────────────────────────

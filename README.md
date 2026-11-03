@@ -60,6 +60,8 @@ déposé plusieurs fois (avertissement dans la console).
 
 ## Localisation sur la carte
 
+Le premier bouton de la barre d'outils permet de **choisir la parcelle en cliquant sur la carte** : l'API Carto Cadastre donne la parcelle située au point cliqué, puis son contour est dessiné, sans déplacer la carte, et sa filiation s'ouvre comme après une recherche. Échap ou un second clic sur le bouton annule. Ce bouton suit le même réglage que la localisation.
+
 Le bouton « Localiser sur la carte » (sur la parcelle cherchée et sur chaque parcelle du graphe) interroge l'**API Carto Cadastre de l'IGN**
 (`https://apicarto.ign.fr/api/cadastre/parcelle`, service public sans clé, cadastre Etalab) avec le code INSEE, la section, le numéro et le
 préfixe de section de la parcelle. Il zoome sur la parcelle (par la vue OpenLayers native, avec un recouvrement du panneau mesuré sur la page), la centre dans la partie de la carte que le panneau ne recouvre pas, et dessine son

@@ -35,7 +35,7 @@ ne sont pas dans le bundle.
 ## Icônes Lucide
 
 - Icônes copiées en SVG dans `src/js/extension.js` (onglet et barre d'outils du panneau) : « graph-hub » (<https://lucide.dev/icons/graph-hub>),
-  « map-pin » (<https://lucide.dev/icons/map-pin>), « map-pin-off » (<https://lucide.dev/icons/map-pin-off>), « sparkles » (<https://lucide.dev/icons/sparkles>), « maximize » et « minimize »
+  « mouse-pointer-click » (<https://lucide.dev/icons/mouse-pointer-click>), « map-pin » (<https://lucide.dev/icons/map-pin>), « map-pin-off » (<https://lucide.dev/icons/map-pin-off>), « sparkles » (<https://lucide.dev/icons/sparkles>), « maximize » et « minimize »
   (<https://lucide.dev/icons/maximize>, <https://lucide.dev/icons/minimize>) ; boutons de zoom du graphe : « zoom-in », « zoom-out » et « scan »
   (<https://lucide.dev/icons/zoom-in>, <https://lucide.dev/icons/zoom-out>, <https://lucide.dev/icons/scan>) ; bouton de la visite guidée :
   « circle-question-mark » (<https://lucide.dev/icons/circle-question-mark>). Source : <https://github.com/lucide-icons/lucide>

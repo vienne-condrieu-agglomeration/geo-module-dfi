@@ -60,6 +60,9 @@ angular
                                 + '<path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'),
             minimize: _lucideSvg('<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/>'
                                 + '<path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>'),
+            // « mouse-pointer-click » (https://lucide.dev/icons/mouse-pointer-click)
+            mousePointerClick: _lucideSvg('<path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/>'
+                + '<path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/>'),
             // « map-pin » et « map-pin-off » (https://lucide.dev/icons/map-pin, https://lucide.dev/icons/map-pin-off)
             mapPin: _lucideSvg('<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/>'
                              + '<circle cx="12" cy="10" r="3"/>'),
@@ -212,6 +215,10 @@ angular
                 '    <span class="geo-dfi-toolbar-icon">' + _ICONS.graphHub + '</span>',
                 '    <span class="geo-dfi-title">{{ title }}</span>',
                 '    <div class="geo-dfi-bar-actions">',
+                '      <button type="button" class="geo-dfi-iconbtn geo-dfi-pick" ng-class="{\'geo-dfi-iconbtn--on\': state.picking}"',
+                '              ng-if="locateEnabled" ng-click="togglePick()" aria-pressed="{{ state.picking ? \'true\' : \'false\' }}"',
+                '              title="{{ state.picking ? \'Annuler le clic sur la carte (Échap)\' : \'Choisir la parcelle en cliquant sur la carte\' }}"',
+                '              aria-label="{{ state.picking ? \'Annuler le clic sur la carte\' : \'Choisir la parcelle en cliquant sur la carte\' }}">' + _ICONS.mousePointerClick + '</button>',
                 '      <button type="button" class="geo-dfi-iconbtn geo-dfi-locate" ng-class="{\'geo-dfi-iconbtn--on\': state.locatedMode === \'parcel\'}"',
                 '              ng-if="locateEnabled && state.result" ng-click="toggleLocation()" ng-disabled="state.locating"',
                 '              aria-pressed="{{ state.locatedMode === \'parcel\' ? \'true\' : \'false\' }}"',
@@ -240,6 +247,8 @@ angular
                 '    </div>',
                 '  </div>',
                 '  <div class="geo-dfi-body">',
+                '  <div class="geo-dfi-msg" role="status" ng-if="state.pickMessage && !state.pickWarn">{{ state.pickMessage }}</div>',
+                '  <div class="geo-dfi-msg geo-dfi-msg--warn" role="alert" ng-if="state.pickMessage && state.pickWarn">{{ state.pickMessage }}</div>',
                 '  <div class="geo-dfi-searchbar" ng-if="state.result">',
                 '    <span class="geo-dfi-parcel"><span ng-if="state.result.commune">{{ state.result.commune }} · </span>{{ state.result.label }}</span>',
                 '    <span class="geo-dfi-idu">{{ state.result.idu }}</span>',
@@ -365,7 +374,8 @@ angular
                 $scope.state     = {
                     idu: '', insee: '', section: '', numberText: '', listLoading: false,
                     loading: false, error: '', result: null, selected: null,
-                    locating: false, locatingAll: false, locateMessage: '', locateWarn: false, locatedMode: null, mapSummary: null, searchOpen: false
+                    locating: false, locatingAll: false, locateMessage: '', locateWarn: false, locatedMode: null, mapSummary: null, searchOpen: false,
+                    picking: false, pickMessage: '', pickWarn: false
                 };
                 var _graph = null;
                 var _layout = null;
@@ -402,6 +412,9 @@ angular
 
                 $scope.search = function () {
                     var st = $scope.state;
+                    _stopPicking();
+                    var picked = _pickedParcel;
+                    _pickedParcel = null;
                     // Le repérage appartient à la parcelle affichée : sans cela, les boutons resteraient actifs sur la suivante
                     $scope.clearLocation();
                     st.error = ''; st.selected = null;
@@ -419,7 +432,7 @@ angular
                     }
                     st.loading = true; st.result = null;
                     _getIndex().then(function (index) { return _getLookup(index, parsed.insee); })
-                        .then(function (lookup) { _apply(function () { _show(lookup, parsed); }); })
+                        .then(function (lookup) { _apply(function () { _show(lookup, parsed, picked); }); })
                         .catch(function (err) { _apply(function () { st.loading = false; st.error = _errorMessage(err, parsed); }); });
                 };
 
@@ -434,7 +447,7 @@ angular
                     return c ? (c.name || c.label) : insee;
                 }
 
-                function _show(lookup, parsed) {
+                function _show(lookup, parsed, picked) {
                     var st = $scope.state;
                     _lookup = lookup;
                     st.loading = false;
@@ -454,7 +467,16 @@ angular
                     });
                     _selectedId = 'p:' + parsed.key;
                     $timeout(_draw, 0);   // le conteneur est créé par ng-if au prochain cycle
+                    if (picked) { _outlinePicked(picked, dfi.parcelLabel(parsed.key)); }
                     _tourNotify('search');
+                }
+
+                // Parcelle choisie sur la carte : contour seul, sans déplacer la carte que l'on vient de cliquer
+                function _outlinePicked(parcel, label) {
+                    try {
+                        _highlight([{ feature: parcel.feature, role: 'searched', label: label }]);
+                        $scope.state.locatedMode = 'parcel';
+                    } catch (err) { console.error('[geo-dfi] contour de la parcelle :', err); }
                 }
 
                 function _graphContainer() { return $element[0].querySelector('.geo-dfi-graph'); }
@@ -669,6 +691,82 @@ angular
                     else { $scope.locateAll(); }
                 };
 
+                // ── Choix de la parcelle par un clic sur la carte ────────────────────────────────────────────────────────
+                // Le mode dure jusqu'à une parcelle trouvée : un clic dans une rue laisse réessayer.
+                var _pick = null;   // { map, target, onClick, busy }
+                var _pickedParcel = null;   // parcelle cliquée, dont le contour est dessiné quand sa filiation s'affiche
+
+                function _stopPicking() {
+                    var st = $scope.state;
+                    st.picking = false; st.pickMessage = ''; st.pickWarn = false;
+                    if (!_pick) { return; }
+                    try {
+                        _pick.map.un('singleclick', _pick.onClick);
+                        if (_pick.target) { _pick.target.style.cursor = ''; }
+                    } catch (err) { console.warn('[geo-dfi] fin du clic sur la carte :', err); }
+                    document.removeEventListener('keydown', _onPickEscape, true);
+                    _pick = null;
+                }
+
+                function _onPickEscape(e) {
+                    if (e.key === 'Escape') { _apply(_stopPicking); }
+                }
+
+                function _startPicking() {
+                    var st = $scope.state;
+                    if (_pick) { return; }
+                    var pick = {};
+                    try {
+                        pick.map = _nativeMap();
+                        pick.target = pick.map.getTargetElement();
+                    } catch (err) {
+                        console.error('[geo-dfi] carte GEO indisponible :', err);
+                        st.pickMessage = 'La carte n\'est pas disponible (voir la console du navigateur).'; st.pickWarn = true;
+                        return;
+                    }
+                    pick.onClick = function (e) { _onPickClick(pick, e); };
+                    _pick = pick;
+                    pick.map.on('singleclick', pick.onClick);
+                    if (pick.target) { pick.target.style.cursor = 'crosshair'; }
+                    document.addEventListener('keydown', _onPickEscape, true);
+                    st.picking = true; st.pickWarn = false;
+                    st.pickMessage = 'Cliquez sur une parcelle de la carte (Échap pour annuler).';
+                }
+
+                function _onPickClick(pick, e) {
+                    if (pick.busy) { return; }
+                    pick.busy = true;
+                    var st = $scope.state;
+                    var lonLat = window.ol.proj.transform(e.coordinate, pick.map.getView().getProjection(), 'EPSG:4326');
+                    _apply(function () { st.pickWarn = false; st.pickMessage = 'Recherche de la parcelle…'; });
+                    dfi.loadParcelAt(_fetch, _cadastreUrl, lonLat[0], lonLat[1]).then(function (parcel) {
+                        _apply(function () {
+                            pick.busy = false;
+                            if (_pick !== pick) { return; }   // annulé entre-temps
+                            if (!parcel) {
+                                st.pickWarn = true;
+                                st.pickMessage = 'Aucune parcelle à cet endroit : cliquez sur une parcelle (Échap pour annuler).';
+                                return;
+                            }
+                            _pickedParcel = parcel;
+                            $scope.focusParcel(parcel.idu);
+                        });
+                    }).catch(function (err) {
+                        console.error('[geo-dfi] clic sur la carte :', err);
+                        _apply(function () {
+                            pick.busy = false;
+                            if (_pick !== pick) { return; }
+                            _stopPicking();
+                            st.pickWarn = true; st.pickMessage = _locateError(err);
+                        });
+                    });
+                }
+
+                $scope.togglePick = function () {
+                    if ($scope.state.picking) { _stopPicking(); }
+                    else { _whenMapVisible(_startPicking); }
+                };
+
                 $scope.clearLocation = function () {
                     _clearHighlight();
                     $scope.state.locatedMode = null; $scope.state.locateMessage = ''; $scope.state.locateWarn = false; $scope.state.mapSummary = null;
@@ -700,6 +798,7 @@ angular
                     if ($scope.isFullscreen) { _panelWidthPct = _panelWidthCfg; document.removeEventListener('keydown', _onEscape, true); }
                     document.body.classList.remove(_FULLSCREEN_BODY_CLASS);
                     _clearHighlight();
+                    _stopPicking();
                     window.removeEventListener('resize', _fitPanelHeightSoon);
                     _heightTimers.forEach(clearTimeout);
                     if (_graphObserver) { _graphObserver.disconnect(); _graphObserver = null; }
@@ -1213,7 +1312,8 @@ angular
             var steps = [
                 step('search', _inPanel('.geo-dfi-search:not(.ng-hide) .geo-dfi-form', '.geo-dfi-searchbar'), 'Choisir une parcelle',
                     'Choisissez la commune, la section et le numéro, puis cliquez sur « Chercher ». Une fois la parcelle affichée, '
-                    + 'la recherche se replie : « Modifier » la rouvre.', 'search',
+                    + 'la recherche se replie : « Modifier » la rouvre.'
+                    + (_locateEnabled ? ' Le premier bouton de la barre d\'outils permet aussi de la choisir en cliquant sur la carte.' : ''), 'search',
                     [_btn('Ne plus afficher', function () { _setTourState('never'); tour.destroy(); }, true), next]),
                 step('summary', _inPanel('.geo-dfi-summary', '.geo-dfi-result'), 'La synthèse',
                     'D\'où vient la parcelle et ce qu\'elle est devenue : le type et la date de chaque opération. S\'il y en a beaucoup, dépliez la synthèse pour les voir.'),

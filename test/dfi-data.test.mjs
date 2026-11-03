@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     SUPPORTED_FORMAT, DfiError, parseIdu, parcelKey, splitKey, parcelLabel, formatDate, dataUrl, loadJson,
     checkIndex, loadIndex, loadCommune, buildLookup, describeLot, buildGraph, parcelSummary, layoutGraph,
-    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, drawInsetPolygon, lineageOf, nodeTooltip,
+    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, drawInsetPolygon, parcelAtUrl, loadParcelAt, lineageOf, nodeTooltip,
     DEFAULT_CADASTRE_URL, cadastreUrl, geometryBbox, expandBbox, extentForVisible, fitExtent, parseCadastre, loadParcel, formatArea,
     communeOptions, sectionOptions, numberOptions, normalizeNumber, selectionIdu, mapTargets, mapLimit, mergeBbox
 } from '../src/js/dfi-data.js';
@@ -281,6 +281,21 @@ await test('drawInsetPolygon : contour coupé au polygone, multipolygone et trou
     calls.length = 0;
     drawInsetPolygon(ctx, [[ring], [ring]], { fill: 'f', stroke: 's', width: 2 });
     assert.equal(calls.filter((c) => c[0] === 'clip').length, 2, 'multipolygone : une découpe par polygone');
+});
+
+await test('loadParcelAt : parcelle en un point, sans parcelle, erreurs', async () => {
+    const url = parcelAtUrl('https://exemple.test/parcelle?x=1', 4.86, 45.51);
+    assert.equal(url, 'https://exemple.test/parcelle?geom=' + encodeURIComponent('{"type":"Point","coordinates":[4.86,45.51]}'));
+    const reply = (body, ok = true, status = 200) => () => Promise.resolve({ ok, status, json: () => Promise.resolve(body) });
+    const geometry = { type: 'Polygon', coordinates: [[[4, 45], [5, 45], [5, 46], [4, 45]]] };
+    const feat = (idu) => ({ type: 'Feature', geometry, properties: { idu } });
+    const found = await loadParcelAt(reply({ type: 'FeatureCollection', features: [feat('38544000bi0498'), feat('38544000BI0499')] }), '', 4.86, 45.51);
+    assert.equal(found.idu, '38544000BI0498', 'première parcelle, en capitales');
+    assert.equal(found.feature.geometry, geometry, 'contour fourni pour le dessin');
+    assert.equal(await loadParcelAt(reply({ type: 'FeatureCollection', features: [] }), '', 0, 0), null, 'aucune parcelle');
+    await assert.rejects(loadParcelAt(reply({}), '', 0, 0), (e) => e.code === 'json');
+    await assert.rejects(loadParcelAt(reply({}, false, 429), '', 0, 0), (e) => e.code === 'http');
+    await assert.rejects(loadParcelAt(() => Promise.reject(new Error('x')), '', 0, 0), (e) => e.code === 'network');
 });
 
 await test('viewBoxOf : zone vue à l\'échelle', () => {

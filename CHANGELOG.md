@@ -11,6 +11,10 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+### Ajouté
+
+- **Choisir la parcelle en cliquant sur la carte** : un bouton de la barre d'outils, puis un clic sur une parcelle ouvre sa filiation, dessine son contour et remplit la commune, la section et le numéro. Échap ou un second clic sur le bouton annule
+
 ### Corrigé
 
 - Le **libellé des parcelles** sur la carte passe devant le polygone : il était voilé par sa couleur de remplissage
