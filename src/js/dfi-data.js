@@ -309,6 +309,16 @@ export function buildGraph(lookup, key, options) {
         });
     }
 
+    // Une parcelle masquée pour un lot peut avoir été ajoutée ensuite par un autre : on la relie, et « +N » ne compte que les vraies absentes.
+    order.forEach(function (id) {
+        var node = nodes[id];
+        if (node.type !== 'lot') { return; }
+        var lot = lookup.lots[node.index];
+        node.hidden = 0;
+        lot[4].forEach(function (m) { if (nodes['p:' + m]) { addEdge('p:' + m, id); } else { node.hidden++; } });
+        lot[5].forEach(function (d) { if (nodes['p:' + d]) { addEdge(id, 'p:' + d); } else { node.hidden++; } });
+    });
+
     return {
         key: key,
         nodes: order.map(function (id) { return nodes[id]; }),

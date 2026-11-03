@@ -18,6 +18,7 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 ### Corrigé
 
 - Le **libellé des parcelles** sur la carte passe devant le polygone : il était voilé par sa couleur de remplissage
+- Le **« +N »** d'une opération ne compte plus les parcelles déjà visibles ailleurs dans le graphe, et leur lien avec l'opération est dessiné
 
 ## [0.5.0] — 2026-11-03
 

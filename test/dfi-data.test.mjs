@@ -152,6 +152,18 @@ await test('buildGraph : limites (nœuds, sœurs masquées)', () => {
     assert.equal(tiny.nodes.length, 5);
     assert.equal(tiny.truncated, true);
 });
+await test('buildGraph : parcelle masquée pour un lot mais présente par un autre, reliée et non comptée', () => {
+    const many = Array.from({ length: 12 }, (_, i) => 'AB' + String(i + 10).padStart(4, '0'));
+    const last = many[many.length - 1];
+    const l = buildLookup({ lots: [
+        ['1', '00001', 4, '2000-01-01', ['AB0001'], many],
+        ['2', '00001', 4, '2001-01-01', [last], ['AB0099']]
+    ] });
+    const g = buildGraph(l, 'AB0099');
+    const first = g.nodes.find((n) => n.type === 'lot' && n.index === 0);
+    assert.equal(first.hidden, 3, '12 filles : la cherchée par sa lignée, 8 sœurs montrées, 3 vraiment absentes');
+    assert.ok(g.edges.some((e) => e.from === first.id && e.to === 'p:' + last), 'arête présente');
+});
 await test('parcelSummary', () => {
     const s = parcelSummary(lookup, 'AH0264');
     assert.deepEqual(s.origin.map((l) => l.dfi), ['0000200']);
