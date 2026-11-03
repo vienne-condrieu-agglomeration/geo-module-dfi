@@ -11,6 +11,10 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+### Corrigé
+
+- Le **libellé des parcelles** sur la carte passe devant le polygone : il était voilé par sa couleur de remplissage
+
 ## [0.5.0] — 2026-11-03
 
 ### Modifié

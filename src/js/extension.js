@@ -963,7 +963,9 @@ angular
                     }
                 });
                 // Sans `overflow`, OpenLayers masque l'étiquette qui ne tient pas dans le polygone : elle apparaît en zoomant.
+                // OpenLayers dessine les `renderer` après les textes de même niveau : sans ce zIndex, le polygone couvrirait l'étiquette.
                 var labelStyle = new ol.style.Style({
+                    zIndex: 1,
                     text: new ol.style.Text({
                         text: it.label,
                         font: (it.role === 'searched' ? 'bold ' : '') + '12px sans-serif',
