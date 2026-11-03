@@ -1,6 +1,6 @@
 {
   "name": "geo-dfi",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Module GEO de filiation des parcelles cadastrales (Documents de filiation informatisés de la DGFiP) : graphe des parcelles mères, des lots et des parcelles filles",
   "main": "src/js/extension.js",
   "dependencies": {
