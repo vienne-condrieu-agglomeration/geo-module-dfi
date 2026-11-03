@@ -14,6 +14,7 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 ### Ajouté
 
 - **Choisir la parcelle en cliquant sur la carte** : un bouton de la barre d'outils, puis un clic sur une parcelle ouvre sa filiation, dessine son contour et remplit la commune, la section et le numéro. Échap ou un second clic sur le bouton annule
+- **Déplier les opérations « +N »** : un badge sur l'opération, avec son explication au survol, affiche dans le graphe ses parcelles masquées puis les replie, sans changer le zoom
 
 ### Corrigé
 

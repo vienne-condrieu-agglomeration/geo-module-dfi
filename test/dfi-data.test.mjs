@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     SUPPORTED_FORMAT, DfiError, parseIdu, parcelKey, splitKey, parcelLabel, formatDate, dataUrl, loadJson,
     checkIndex, loadIndex, loadCommune, buildLookup, describeLot, buildGraph, parcelSummary, layoutGraph,
-    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, drawInsetPolygon, parcelAtUrl, loadParcelAt, lineageOf, nodeTooltip,
+    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, drawInsetPolygon, parcelAtUrl, loadParcelAt, expandTip, lineageOf, nodeTooltip,
     DEFAULT_CADASTRE_URL, cadastreUrl, geometryBbox, expandBbox, extentForVisible, fitExtent, parseCadastre, loadParcel, formatArea,
     communeOptions, sectionOptions, numberOptions, normalizeNumber, selectionIdu, mapTargets, mapLimit, mergeBbox
 } from '../src/js/dfi-data.js';
@@ -148,6 +148,12 @@ await test('buildGraph : limites (nœuds, sœurs masquées)', () => {
     const fromDaughter = buildGraph(big, many[0]);
     const lot = fromDaughter.nodes.find((n) => n.type === 'lot');
     assert.equal(lot.hidden, 21, '29 sœurs : 8 montrées, 21 masquées');
+    const open = buildGraph(big, many[0], { expanded: { [lot.id]: true } });
+    assert.equal(open.nodes.find((n) => n.type === 'lot').hidden, 0, 'lot déplié : rien de masqué');
+    assert.equal(open.nodes.filter((n) => n.type === 'parcel').length, 1 + 30, 'la mère et toutes les filles');
+    const capped = buildGraph(big, many[0], { expanded: { [lot.id]: true }, maxNodes: 12 });
+    assert.equal(capped.nodes.length, 12, 'le plafond de nœuds reste respecté');
+    assert.ok(capped.truncated && capped.nodes.find((n) => n.type === 'lot').hidden > 0, 'le reste est signalé');
     const tiny = buildGraph(big, 'AB0001', { maxNodes: 5 });
     assert.equal(tiny.nodes.length, 5);
     assert.equal(tiny.truncated, true);
@@ -163,6 +169,11 @@ await test('buildGraph : parcelle masquée pour un lot mais présente par un aut
     const first = g.nodes.find((n) => n.type === 'lot' && n.index === 0);
     assert.equal(first.hidden, 3, '12 filles : la cherchée par sa lignée, 8 sœurs montrées, 3 vraiment absentes');
     assert.ok(g.edges.some((e) => e.from === first.id && e.to === 'p:' + last), 'arête présente');
+});
+await test('expandTip : ce que fera le badge', () => {
+    assert.match(expandTip({ hidden: 1, expanded: false }), /^Déplier : afficher dans le graphe la parcelle masquée/);
+    assert.match(expandTip({ hidden: 4, expanded: false }), /les 4 parcelles masquées/);
+    assert.match(expandTip({ hidden: 2, expanded: true }), /^Replier/);
 });
 await test('parcelSummary', () => {
     const s = parcelSummary(lookup, 'AH0264');

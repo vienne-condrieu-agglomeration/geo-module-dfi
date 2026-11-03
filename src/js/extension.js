@@ -316,7 +316,7 @@ angular
                 '        <li ng-repeat="t in state.result.summary.lines track by $index">{{ t }}</li>',
                 '      </ul>',
                 '    </details>',
-                '    <div class="geo-dfi-msg" ng-if="state.result.truncated">Graphe tronqué : trop de parcelles liées.</div>',
+                '    <div class="geo-dfi-msg" ng-if="state.result.truncated">Graphe tronqué : trop de parcelles liées, certaines restent masquées.</div>',
                 '    <div class="geo-dfi-view">',
                 '    <div class="geo-dfi-graph-wrap">',
                 '      <div class="geo-dfi-graph" tabindex="-1"></div>',
@@ -447,12 +447,50 @@ angular
                     return c ? (c.name || c.label) : insee;
                 }
 
+                // Graphe et mise en page de la parcelle, avec les lots dépliés
+                function _buildLayout(parsed) {
+                    var graph = _graph = dfi.buildGraph(_lookup, parsed.key, { expanded: _expanded });
+                    _layout = dfi.layoutGraph(graph, function (n) {
+                        if (n.type === 'parcel') { return dfi.parcelLabel(n.key); }
+                        var d = dfi.describeLot(_lookup.lots[n.index]);
+                        return d.kind + ' ' + d.dateLabel + (n.hidden ? ' (+' + n.hidden + ')' : '');
+                    });
+                    return graph;
+                }
+
+                // Badge d'une opération : déplie ou replie ses parcelles masquées, sans changer le zoom ni ouvrir sa fiche
+                function _toggleExpanded(lotId, fromKeyboard) {
+                    var st = $scope.state;
+                    if (_expanded[lotId]) { delete _expanded[lotId]; } else { _expanded[lotId] = true; }
+                    var graph = _buildLayout(st.result.parsed);
+                    st.result.truncated = graph.truncated;
+                    // Parcelle choisie disparue au repli : sa fiche se ferme
+                    if (!graph.nodes.some(function (n) { return n.id === _selectedId; })) {
+                        st.selected = null;
+                        _selectedId = 'p:' + st.result.parsed.key;
+                    }
+                    var container = _graphContainer();
+                    var z = container && container.geoDfiZoom;
+                    if (z) {
+                        z.layout = _layout;
+                        if (z.mode === 'initial') { z.mode = null; }
+                    }
+                    $timeout(function () {
+                        _draw();
+                        var node = _layout.nodes.filter(function (n) { return n.id === lotId; })[0];
+                        if (node) { _revealNode(container, node); }
+                        var badge = fromKeyboard && container && container.querySelector('[data-lot="' + lotId + '"]');
+                        if (badge) { badge.focus({ preventScroll: true }); }   // le redessin a retiré le badge qui avait le focus
+                    }, 0);
+                }
+
                 function _show(lookup, parsed, picked) {
                     var st = $scope.state;
                     _lookup = lookup;
                     st.loading = false;
                     _syncCascade(lookup, parsed);
-                    var graph = _graph = dfi.buildGraph(lookup, parsed.key);
+                    _expanded = {};
+                    var graph = _buildLayout(parsed);
                     var summary = dfi.parcelSummary(lookup, parsed.key);
                     st.result = {
                         parsed: parsed, idu: parsed.idu, label: dfi.parcelLabel(parsed.key), hasHistory: graph.hasHistory,
@@ -460,11 +498,6 @@ angular
                         summary: dfi.summaryLines(summary)
                     };
                     st.searchOpen = false;
-                    _layout = dfi.layoutGraph(graph, function (n) {
-                        if (n.type === 'parcel') { return dfi.parcelLabel(n.key); }
-                        var d = dfi.describeLot(lookup.lots[n.index]);
-                        return d.kind + ' ' + d.dateLabel + (n.hidden ? ' (+' + n.hidden + ')' : '');
-                    });
                     _selectedId = 'p:' + parsed.key;
                     $timeout(_draw, 0);   // le conteneur est créé par ng-if au prochain cycle
                     if (picked) { _outlinePicked(picked, dfi.parcelLabel(parsed.key)); }
@@ -486,7 +519,9 @@ angular
                     if (!container || !_layout) { return; }
                     _renderGraph(container, _layout, _selectedId, 'p:' + $scope.state.result.parsed.key, function (node) {
                         _apply(function () { _select(node); });
-                    }, function (node) { return dfi.nodeTooltip(_lookup, node); });
+                    }, function (node) { return dfi.nodeTooltip(_lookup, node); }, function (node, fromKeyboard) {
+                        _apply(function () { _toggleExpanded(node.id, fromKeyboard); });
+                    });
                 }
                 $scope.zoomGraph = function (direction) { _zoomBy(_graphContainer(), direction > 0 ? _ZOOM_STEP : 1 / _ZOOM_STEP); };
                 $scope.fitGraph = function () { _fitGraph(_graphContainer()); };
@@ -693,6 +728,7 @@ angular
 
                 // ── Choix de la parcelle par un clic sur la carte ────────────────────────────────────────────────────────
                 // Le mode dure jusqu'à une parcelle trouvée : un clic dans une rue laisse réessayer.
+                var _expanded = {};   // lots dépliés dans le graphe : { 'l:INDEX': true }
                 var _pick = null;   // { map, target, onClick, busy }
                 var _pickedParcel = null;   // parcelle cliquée, dont le contour est dessiné quand sa filiation s'affiche
 
@@ -818,7 +854,7 @@ angular
             return el;
         }
 
-        function _renderGraph(container, layout, selectedId, searchedId, onSelect, tipOf) {
+        function _renderGraph(container, layout, selectedId, searchedId, onSelect, tipOf, onToggle) {
             container.innerHTML = '';
             // Le SVG occupe toute la zone, dont la taille vient de la mise en page du panneau (voir _syncGraphSize)
             var svg = _svg('svg', {
@@ -853,6 +889,7 @@ angular
                 g.addEventListener('keydown', function (e) {
                     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(n); }
                 });
+                if (n.type === 'lot' && (n.hidden || n.expanded)) { _renderExpandBadge(g, n, onToggle); }
                 if (n.id === searchedId) { searchedNode = n; }
             });
 
@@ -867,6 +904,21 @@ angular
             }
             // Sinon (clic sur un nœud) : même centre et même échelle, dans la zone actuelle
             _syncGraphSize(container, z);
+        }
+
+        // Badge posé sur le coin d'une opération : son clic ne doit pas ouvrir la fiche du nœud qui le porte
+        function _renderExpandBadge(nodeEl, n, onToggle) {
+            var tip = dfi.expandTip(n);
+            var b = _svg('g', { 'class': 'geo-dfi-node-badge', transform: 'translate(' + n.w + ',0)', tabindex: '0', role: 'button',
+                'aria-label': tip, 'data-lot': n.id }, nodeEl);
+            _svg('title', {}, b).textContent = tip;
+            _svg('circle', { r: 10 }, b);
+            // Lucide « chevrons-up-down » et « chevrons-down-up », ramenées de 24 à 14 px
+            _svg('path', { transform: 'translate(-7,-7) scale(.5833)', d: n.expanded ? 'm7 20 5-5 5 5M7 4l5 5 5-5' : 'm7 15 5 5 5-5M7 9l5-5 5 5' }, b);
+            b.addEventListener('click', function (e) { e.stopPropagation(); onToggle(n, false); });
+            b.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onToggle(n, true); }
+            });
         }
 
         // ============================================================
@@ -1322,7 +1374,7 @@ angular
                     + key('searched') + 'parcelle cherchée<br>'
                     + key('lineage') + 'ses ancêtres et descendantes<br>'
                     + key('leaf') + 'parcelle voisine (sœur, autre mère) : un clic pour suivre sa propre filiation<br>'
-                    + key('lot') + 'opération (division, réunion…) et sa date'),
+                    + key('lot') + 'opération (division, réunion…) et sa date ; son badge rond, s\'il y en a un, déplie ou replie des parcelles masquées'),
                 step('node', _inPanel('.geo-dfi-node--searched', '.geo-dfi-graph-wrap'), 'Cliquer sur une parcelle',
                     'Cliquez sur une parcelle ou une opération : sa fiche s\'affiche sous le graphe et sa lignée reste en couleur, le reste '
                     + 's\'estompe. Le survol d\'un nœud en donne l\'essentiel.', 'node'),
@@ -1431,6 +1483,11 @@ angular
                 '.geo-dfi-node--searched rect{fill:#ffe2b8;stroke:#c76a00;stroke-width:2.2;}',
                 '.geo-dfi-node--selected rect{stroke:#0b6b3a;stroke-width:2.6;}',
                 '.geo-dfi-node--dim{opacity:.45;}',
+                '.geo-dfi-node-badge{cursor:pointer;outline:none;}',
+                '.geo-dfi-node-badge circle{fill:#27487a;stroke:#fff;stroke-width:1.5;}',
+                '.geo-dfi-node-badge:hover circle{fill:#1d3a66;}',
+                '.geo-dfi-node-badge:focus-visible circle{stroke:#0b6b3a;stroke-width:3;}',
+                '.geo-dfi-node-badge path{fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;}',
                 '.geo-dfi-edge--lineage{stroke:#4a6fa5;stroke-width:2;}',
                 '.geo-dfi-edge--dim{opacity:.35;}',
                 '.geo-dfi-node:focus-visible rect{stroke:#0b6b3a;stroke-width:3;}',

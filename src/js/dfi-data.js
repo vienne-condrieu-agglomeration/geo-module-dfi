@@ -220,10 +220,11 @@ export function describeLot(lot) {
  * Graphe des ancêtres et des descendants de `key`. Nœuds : parcelles (id « p:KEY ») et lots (id « l:INDEX »).
  * Niveau d'une parcelle : 0 pour la parcelle cherchée, négatif pour ses ancêtres, positif pour ses descendants ;
  * un lot est à mi-chemin entre ses mères et ses filles (niveau ±0,5). Les autres parcelles d'un lot rencontré
- * (sœurs, co-mères) sont montrées sans être explorées, dans la limite de `maxSiblings` par lot.
+ * (sœurs, co-mères) sont montrées sans être explorées, dans la limite de `maxSiblings` par lot, sauf pour les lots dépliés
+ * (`expanded` : { 'l:INDEX': true }), limités seulement par `maxNodes`.
  */
 export function buildGraph(lookup, key, options) {
-    var o = Object.assign({ maxDepth: 30, maxNodes: 300, maxSiblings: 8 }, options || {});
+    var o = Object.assign({ maxDepth: 30, maxNodes: 300, maxSiblings: 8, expanded: {} }, options || {});
     var nodes = {};
     var order = [];
     var edges = [];
@@ -244,14 +245,15 @@ export function buildGraph(lookup, key, options) {
     function addParcel(k, level, explored) {
         return addNode('p:' + k, { id: 'p:' + k, type: 'parcel', key: k, level: level, explored: !!explored });
     }
-    // Ajoute au plus `maxSiblings` parcelles non encore présentes ; retourne le nombre de parcelles non affichées.
-    function addOthers(keys, except, level, link) {
+    // Ajoute au plus `maxSiblings` parcelles non encore présentes (toutes si le lot est déplié) ; retourne le nombre de parcelles non affichées.
+    function addOthers(lotId, keys, except, level, link) {
+        var limit = o.expanded[lotId] ? Infinity : o.maxSiblings;
         var shown = 0;
         var hidden = 0;
         keys.forEach(function (k) {
             if (k === except) { return; }
             if (nodes['p:' + k]) { link(k); return; }
-            if (shown >= o.maxSiblings) { hidden++; return; }
+            if (shown >= limit) { hidden++; return; }
             if (addParcel(k, level, false)) { shown++; link(k); } else { hidden++; }
         });
         return hidden;
@@ -280,7 +282,7 @@ export function buildGraph(lookup, key, options) {
                     if (!existing) { queue.push({ key: m, level: up.level - 1, depth: up.depth + 1 }); }
                 }
             });
-            lotNode.hidden += addOthers(lot[5], up.key, up.level, function (k) { addEdge(lotId, 'p:' + k); });
+            lotNode.hidden += addOthers(lotId, lot[5], up.key, up.level, function (k) { addEdge(lotId, 'p:' + k); });
         });
     }
 
@@ -305,7 +307,7 @@ export function buildGraph(lookup, key, options) {
                     if (!existing) { queue.push({ key: d, level: down.level + 1, depth: down.depth + 1 }); }
                 }
             });
-            lotNode.hidden += addOthers(lot[4], down.key, down.level, function (k) { addEdge('p:' + k, lotId); });
+            lotNode.hidden += addOthers(lotId, lot[4], down.key, down.level, function (k) { addEdge('p:' + k, lotId); });
         });
     }
 
@@ -315,6 +317,7 @@ export function buildGraph(lookup, key, options) {
         if (node.type !== 'lot') { return; }
         var lot = lookup.lots[node.index];
         node.hidden = 0;
+        node.expanded = !!o.expanded[id];
         lot[4].forEach(function (m) { if (nodes['p:' + m]) { addEdge('p:' + m, id); } else { node.hidden++; } });
         lot[5].forEach(function (d) { if (nodes['p:' + d]) { addEdge(id, 'p:' + d); } else { node.hidden++; } });
     });
@@ -352,6 +355,12 @@ export function lineageOf(edges, id) {
         }
     });
     return seen;
+}
+
+/** Infobulle du badge de dépliage d'une opération : ce que fera un clic. */
+export function expandTip(node) {
+    if (node.expanded) { return 'Replier : masquer à nouveau les parcelles ajoutées à cette opération'; }
+    return 'Déplier : afficher dans le graphe ' + (node.hidden === 1 ? 'la parcelle masquée' : 'les ' + node.hidden + ' parcelles masquées') + ' de cette opération';
 }
 
 /** Texte de l'infobulle d'un nœud du graphe (survol) : l'essentiel, sans cliquer. */
