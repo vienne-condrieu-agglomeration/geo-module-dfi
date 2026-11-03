@@ -11,7 +11,7 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
-## [0.5.0] — 2026-11-02
+## [0.5.0] — 2026-11-03
 
 ### Modifié
 
