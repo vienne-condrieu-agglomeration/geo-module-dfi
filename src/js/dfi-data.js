@@ -357,6 +357,23 @@ export function lineageOf(edges, id) {
     return seen;
 }
 
+export var MAX_RECENT_PARCELS = 8;
+
+/** Dernières parcelles lues dans le navigateur : ne garde que des entrées valides (valeur modifiable à la main), au plus `max`. */
+export function parseRecent(raw, max) {
+    var list;
+    try { list = JSON.parse(raw); } catch (e) { return []; }
+    if (!Array.isArray(list)) { return []; }
+    return list.filter(function (r) { return r && typeof r.label === 'string' && parseIdu(String(r.idu)); })
+        .map(function (r) { return { idu: String(r.idu), label: r.label }; })
+        .slice(0, max || MAX_RECENT_PARCELS);
+}
+
+/** Ajoute une parcelle en tête des dernières consultées, sans doublon, au plus `max`. */
+export function pushRecent(list, item, max) {
+    return [item].concat(list.filter(function (r) { return r.idu !== item.idu; })).slice(0, max || MAX_RECENT_PARCELS);
+}
+
 /** Infobulle du badge de dépliage d'une opération : ce que fera un clic. */
 export function expandTip(node) {
     if (node.expanded) { return 'Replier : masquer à nouveau les parcelles ajoutées à cette opération'; }

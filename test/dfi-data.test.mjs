@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     SUPPORTED_FORMAT, DfiError, parseIdu, parcelKey, splitKey, parcelLabel, formatDate, dataUrl, loadJson,
     checkIndex, loadIndex, loadCommune, buildLookup, describeLot, buildGraph, parcelSummary, layoutGraph,
-    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, drawInsetPolygon, parcelAtUrl, loadParcelAt, expandTip, lineageOf, nodeTooltip,
+    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, drawInsetPolygon, parcelAtUrl, loadParcelAt, expandTip, parseRecent, pushRecent, lineageOf, nodeTooltip,
     DEFAULT_CADASTRE_URL, cadastreUrl, geometryBbox, expandBbox, extentForVisible, fitExtent, parseCadastre, loadParcel, formatArea,
     communeOptions, sectionOptions, numberOptions, normalizeNumber, selectionIdu, mapTargets, mapLimit, mergeBbox
 } from '../src/js/dfi-data.js';
@@ -174,6 +174,16 @@ await test('expandTip : ce que fera le badge', () => {
     assert.match(expandTip({ hidden: 1, expanded: false }), /^Déplier : afficher dans le graphe la parcelle masquée/);
     assert.match(expandTip({ hidden: 4, expanded: false }), /les 4 parcelles masquées/);
     assert.match(expandTip({ hidden: 2, expanded: true }), /^Replier/);
+});
+await test('parseRecent et pushRecent : dernières parcelles', () => {
+    const a = { idu: '38544000BI0498', label: 'BI 498' };
+    const b = { idu: '38544000BI0457', label: 'BI 457' };
+    assert.deepEqual(pushRecent([a, b], b), [b, a], 'sans doublon, la plus récente en tête');
+    assert.equal(pushRecent([a, b], { idu: '38544000BI0001', label: 'x' }, 2).length, 2, 'plafond');
+    assert.deepEqual(parseRecent(JSON.stringify([a, { idu: 'faux', label: 'x' }, null, { idu: b.idu }])), [a], 'entrées invalides écartées');
+    assert.deepEqual(parseRecent('pas du json'), []);
+    assert.deepEqual(parseRecent(null), []);
+    assert.deepEqual(parseRecent('{"a":1}'), []);
 });
 await test('parcelSummary', () => {
     const s = parcelSummary(lookup, 'AH0264');

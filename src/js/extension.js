@@ -276,6 +276,10 @@ angular
                 '    <datalist id="geo-dfi-numbers"></datalist>',
                 '    <button type="submit" class="geo-dfi-btn geo-dfi-btn--main geo-dfi-btn--wide" ng-disabled="state.loading || !canSearch()">Chercher</button>',
                 '  </form>',
+                '  <div class="geo-dfi-chips geo-dfi-recent" ng-if="recentList().length">Dernières parcelles :',
+                '    <button type="button" class="geo-dfi-chip" ng-repeat="r in recentList() track by r.idu" ng-click="focusParcel(r.idu)" title="{{ r.idu }}">{{ r.label }}</button>',
+                '    <button type="button" class="geo-dfi-recent-clear" ng-click="clearRecent()" title="Oublier les dernières parcelles consultées sur ce navigateur">Effacer</button>',
+                '  </div>',
                 '  <details class="geo-dfi-idubox">',
                 '    <summary>Saisir une référence cadastrale (IDU)</summary>',
                 '    <form class="geo-dfi-form" ng-submit="search()" novalidate>',
@@ -447,6 +451,32 @@ angular
                     return c ? (c.name || c.label) : insee;
                 }
 
+                // Dernières parcelles consultées, gardées dans ce navigateur uniquement. Le territoire configuré peut avoir changé :
+                // la liste affichée ne propose que ses communes.
+                var _RECENT_KEY = 'geo-dfi-recent';
+                var _recent = [];
+                try { _recent = dfi.parseRecent(window.localStorage.getItem(_RECENT_KEY)); } catch (e) { /* stockage indisponible */ }
+
+                function _saveRecent() {
+                    try { window.localStorage.setItem(_RECENT_KEY, JSON.stringify(_recent)); } catch (e) { /* stockage indisponible */ }
+                }
+                function _rememberParcel(parsed) {
+                    var name = _communeName(parsed.insee);
+                    _recent = dfi.pushRecent(_recent, { idu: parsed.idu, label: (name ? name + ' · ' : '') + dfi.parcelLabel(parsed.key) });
+                    _saveRecent();
+                }
+                var _recentShown = [];
+                $scope.recentList = function () {
+                    var shown = _recent.filter(function (r) { return !_communes || _communes[r.idu.slice(0, 5)]; });
+                    // Même tableau tant que le contenu ne change pas : la surveillance d'Angular reste stable
+                    if (JSON.stringify(shown) !== JSON.stringify(_recentShown)) { _recentShown = shown; }
+                    return _recentShown;
+                };
+                $scope.clearRecent = function () {
+                    _recent = [];
+                    try { window.localStorage.removeItem(_RECENT_KEY); } catch (e) { /* stockage indisponible */ }
+                };
+
                 // Graphe et mise en page de la parcelle, avec les lots dépliés
                 function _buildLayout(parsed) {
                     var graph = _graph = dfi.buildGraph(_lookup, parsed.key, { expanded: _expanded });
@@ -498,6 +528,7 @@ angular
                         summary: dfi.summaryLines(summary)
                     };
                     st.searchOpen = false;
+                    _rememberParcel(parsed);
                     _selectedId = 'p:' + parsed.key;
                     $timeout(_draw, 0);   // le conteneur est créé par ng-if au prochain cycle
                     if (picked) { _outlinePicked(picked, dfi.parcelLabel(parsed.key)); }
@@ -1461,6 +1492,8 @@ angular
                 '.geo-dfi-idu{flex:none;font-size:11px;font-weight:400;color:#555;}',
                 '.geo-dfi-result{flex:1 1 auto;min-height:280px;display:flex;flex-direction:column;}',
                 '.geo-dfi-result>*{flex:none;}',
+                '.geo-dfi-recent{margin-top:6px;}',
+                '.geo-dfi-recent-clear{margin-left:4px;padding:0;border:0;background:none;color:#555;font-size:11px;text-decoration:underline;cursor:pointer;}',
                 '.geo-dfi-summary{margin:0 0 6px;font-size:12px;}',
                 '.geo-dfi-summary summary{cursor:pointer;}',
                 '.geo-dfi-hint{margin:4px 0 0;font-size:11px;color:#444;}',
