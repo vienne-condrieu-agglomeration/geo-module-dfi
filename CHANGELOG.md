@@ -27,6 +27,7 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ### Corrigé
 
+- Les messages d'échec de la localisation, comme « BI 399 n'existe plus au cadastre actuel », ressortent désormais en couleur d'avertissement
 - Le **bas du graphe** reste accessible : le panneau ne dépasse plus du bas de la fenêtre et la molette n'a plus de défilement à contrarier
 
 ## [0.4.1] — 2026-11-02

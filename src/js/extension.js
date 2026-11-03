@@ -282,7 +282,8 @@ angular
                 '  <div class="geo-dfi-msg geo-dfi-msg--error" role="alert" ng-if="state.error">{{ state.error }}</div>',
                 '  <div class="geo-dfi-msg" ng-if="state.loading">Chargement des données…</div>',
                 '  <div class="geo-dfi-result" ng-if="state.result">',
-                '    <div class="geo-dfi-msg" ng-if="state.locateMessage">{{ state.locateMessage }}</div>',
+                '    <div class="geo-dfi-msg" ng-if="state.locateMessage && !state.locateWarn">{{ state.locateMessage }}</div>',
+                '    <div class="geo-dfi-msg geo-dfi-msg--warn" role="alert" ng-if="state.locateMessage && state.locateWarn">{{ state.locateMessage }}</div>',
                 '    <div class="geo-dfi-msg geo-dfi-maplegend" ng-if="state.mapSummary">',
                 '      <div><span class="geo-dfi-swatch geo-dfi-swatch--searched"></span>Parcelle cherchée',
                 '        <span class="geo-dfi-swatch geo-dfi-swatch--descendant"></span>Descendantes',
@@ -364,7 +365,7 @@ angular
                 $scope.state     = {
                     idu: '', insee: '', section: '', numberText: '', listLoading: false,
                     loading: false, error: '', result: null, selected: null,
-                    locating: false, locatingAll: false, locateMessage: '', locatedMode: null, mapSummary: null, searchOpen: false
+                    locating: false, locatingAll: false, locateMessage: '', locateWarn: false, locatedMode: null, mapSummary: null, searchOpen: false
                 };
                 var _graph = null;
                 var _layout = null;
@@ -580,17 +581,19 @@ angular
                     var st = $scope.state;
                     var label = p.label || dfi.parcelLabel(p.key);
                     // La légende de la filiation reste affichée tant que son repérage n'est pas remplacé
-                    st.locating = true; st.locateMessage = '';
+                    st.locating = true; st.locateMessage = ''; st.locateWarn = false;
                     dfi.loadParcel(_fetch, _cadastreUrl, p).then(function (res) {
                         _apply(function () {
                             st.locating = false;
                             if (!res) {
+                                st.locateWarn = true;
                                 st.locateMessage = label + " n'existe plus au cadastre actuel (parcelle divisée, réunie ou renumérotée) : "
                                     + 'elle ne peut pas être localisée.';
                                 return;
                             }
                             _whenMapVisible(function () {
                                 if (!_showOnMap([{ feature: res.feature, bbox: res.bbox, role: 'searched' }])) {
+                                    st.locateWarn = true;
                                     st.locateMessage = "Parcelle trouvée, mais la carte n'a pas pu être déplacée (voir la console du navigateur).";
                                     return;
                                 }
@@ -600,7 +603,7 @@ angular
                         });
                     }).catch(function (err) {
                         console.error('[geo-dfi] localisation :', err);
-                        _apply(function () { st.locating = false; st.locateMessage = _locateError(err); });
+                        _apply(function () { st.locating = false; st.locateWarn = true; st.locateMessage = _locateError(err); });
                     });
                 };
 
@@ -612,6 +615,7 @@ angular
                     var targets = dfi.mapTargets(_graph, _lookup, dfi.MAX_MAP_PARCELS);
                     st.mapSummary = null;
                     st.locating = true; st.locatingAll = true;
+                    st.locateWarn = false;
                     st.locateMessage = 'Recherche des contours de ' + targets.query.length + ' parcelle(s) au cadastre actuel…';
                     dfi.mapLimit(targets.query, dfi.MAP_CONCURRENCY, function (q) {
                         return dfi.loadParcel(_fetch, _cadastreUrl, _parcelInfo(q.key));
@@ -629,11 +633,13 @@ angular
                             });
                             st.mapSummary = summary;
                             if (!found.length) {
+                                st.locateWarn = true;
                                 st.locateMessage = 'Aucune parcelle de cette filiation n\'a de contour au cadastre actuel.';
                                 return;
                             }
                             _whenMapVisible(function () {
                                 if (!_showOnMap(found)) {
+                                    st.locateWarn = true;
                                     st.locateMessage = "Parcelles trouvées, mais la carte n'a pas pu être déplacée (voir la console du navigateur).";
                                     return;
                                 }
@@ -665,7 +671,7 @@ angular
 
                 $scope.clearLocation = function () {
                     _clearHighlight();
-                    $scope.state.locatedMode = null; $scope.state.locateMessage = ''; $scope.state.mapSummary = null;
+                    $scope.state.locatedMode = null; $scope.state.locateMessage = ''; $scope.state.locateWarn = false; $scope.state.mapSummary = null;
                 };
 
                 // Plein écran : le panneau prend toute la largeur ; les boutons de la carte (qui se replient et chevauchent
