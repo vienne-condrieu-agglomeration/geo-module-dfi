@@ -350,10 +350,10 @@ export function nodeTooltip(lookup, node) {
     if (node.type === 'parcel') {
         var s = parcelSummary(lookup, node.key);
         lines = ['Parcelle ' + parcelLabel(node.key)]
-            .concat(s.origin.map(function (l) { return 'Origine : ' + l.kind.toLowerCase() + ' le ' + l.dateLabel; }))
+            .concat(s.origin.map(function (l) { return 'Issue de : ' + l.kind.toLowerCase() + ' le ' + l.dateLabel; }))
             .concat(s.future.length
-                ? s.future.map(function (l) { return 'Devenir : ' + l.kind.toLowerCase() + ' le ' + l.dateLabel; })
-                : ['Devenir : aucune évolution postérieure connue']);
+                ? s.future.map(function (l) { return 'Transformée par : ' + l.kind.toLowerCase() + ' le ' + l.dateLabel; })
+                : ['Pas transformée depuis (aucune évolution postérieure connue)']);
     } else {
         var d = describeLot(lookup.lots[node.index]);
         lines = [d.kind + ' — ' + d.natureLabel, d.dateLabel + ', DFI n° ' + d.dfi,
@@ -381,11 +381,9 @@ export function panelHeight(top, windowHeight, parentBottom, parentHeight) {
 
 /** Résumé en une ligne de parcelSummary, pour la synthèse repliée. */
 export function summaryHeadline(summary) {
-    function count(lots) {
-        if (!lots.length) { return 'aucune opération'; }
-        return lots.length === 1 ? '1 opération' : lots.length + ' opérations';
-    }
-    return 'Origine : ' + count(summary.origin) + ' · Devenir : ' + count(summary.future);
+    function count(lots) { return lots.length === 1 ? '1 opération' : lots.length + ' opérations'; }
+    return (summary.origin.length ? 'Issue de ' + count(summary.origin) : 'Origine inconnue') + ' · '
+        + (summary.future.length ? 'Transformée par ' + count(summary.future) : 'Pas transformée depuis');
 }
 
 /**
@@ -395,11 +393,27 @@ export function summaryHeadline(summary) {
 export function lotShortText(lot, side, max) {
     var limit = max || 6;
     var parcels = side === 'origin' ? lot.mothers : lot.daughters;
-    var head = (side === 'origin' ? 'Origine : ' : 'Devenir : ') + lot.kind + ' le ' + lot.dateLabel;
+    var head = (side === 'origin' ? 'Issue de : ' : 'Transformée par : ') + lot.kind.toLowerCase() + ' le ' + lot.dateLabel;
     if (!parcels.length) { return head; }
     var shown = parcels.slice(0, limit).map(parcelLabel).join(', ');
     var rest = parcels.length - limit;
     return head + (side === 'origin' ? ', de ' : ', en ') + shown + (rest > 0 ? ' et ' + rest + ' autre(s)' : '');
+}
+
+/** Au-delà de ce nombre d'opérations, la synthèse se replie sur summaryHeadline : le graphe garde sa place. */
+export var SUMMARY_INLINE_MAX = 3;
+
+/**
+ * Lignes de la synthèse dépliée ou affichée d'emblée : une par opération, et le côté vide dit en clair. `inline` indique si
+ * elles tiennent sans repli : le type et la date de l'opération se lisent alors sans cliquer.
+ */
+export function summaryLines(summary) {
+    var origin = summary.origin.map(function (l) { return lotShortText(l, 'origin'); });
+    var future = summary.future.map(function (l) { return lotShortText(l, 'future'); });
+    return {
+        inline: origin.length + future.length <= SUMMARY_INLINE_MAX,
+        lines: (origin.length ? origin : ['Origine inconnue']).concat(future.length ? future : ['Pas transformée depuis'])
+    };
 }
 
 // ─── Mise en page ────────────────────────────────────────────────────────────────────────────────────

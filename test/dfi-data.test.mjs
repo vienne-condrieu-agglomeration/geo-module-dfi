@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     SUPPORTED_FORMAT, DfiError, parseIdu, parcelKey, splitKey, parcelLabel, formatDate, dataUrl, loadJson,
     checkIndex, loadIndex, loadCommune, buildLookup, describeLot, buildGraph, parcelSummary, layoutGraph,
-    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, lineageOf, nodeTooltip,
+    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, lineageOf, nodeTooltip,
     DEFAULT_CADASTRE_URL, cadastreUrl, geometryBbox, expandBbox, extentForVisible, fitExtent, parseCadastre, loadParcel, formatArea,
     communeOptions, sectionOptions, numberOptions, normalizeNumber, selectionIdu, mapTargets, mapLimit, mergeBbox
 } from '../src/js/dfi-data.js';
@@ -196,8 +196,8 @@ await test('lineageOf : ancêtres et descendants, sans les sœurs', () => {
 
 await test('nodeTooltip : parcelle et opération', () => {
     assert.equal(nodeTooltip(lookup, { type: 'parcel', key: 'AH0264' }),
-        'Parcelle AH 264\nOrigine : division le 10/05/2001\nDevenir : division le 28/01/2008\nCliquer pour le détail');
-    assert.equal(nodeTooltip(lookup, { type: 'parcel', key: 'AH0281' }).split('\n')[2], 'Devenir : aucune évolution postérieure connue');
+        'Parcelle AH 264\nIssue de : division le 10/05/2001\nTransformée par : division le 28/01/2008\nCliquer pour le détail');
+    assert.equal(nodeTooltip(lookup, { type: 'parcel', key: 'AH0281' }).split('\n')[2], 'Pas transformée depuis (aucune évolution postérieure connue)');
     assert.equal(nodeTooltip(lookup, { type: 'lot', index: 3, hidden: 0 }),
         'Disparition — Croquis de conservation\n05/01/2010, DFI n° 0000300\n1 mère(s), 0 fille(s)\nCliquer pour le détail');
     assert.ok(nodeTooltip(lookup, { type: 'lot', index: 1, hidden: 1 }).includes('dont 1 non affichée(s)'));
@@ -245,13 +245,23 @@ await test('panelHeight : jamais au-delà de la fenêtre', () => {
 });
 
 await test('summaryHeadline et lotShortText : synthèse courte', () => {
-    assert.equal(summaryHeadline({ origin: [], future: [{}] }), 'Origine : aucune opération · Devenir : 1 opération');
-    assert.equal(summaryHeadline({ origin: [{}, {}], future: [] }), 'Origine : 2 opérations · Devenir : aucune opération');
+    assert.equal(summaryHeadline({ origin: [], future: [{}] }), 'Origine inconnue · Transformée par 1 opération');
+    assert.equal(summaryHeadline({ origin: [{}, {}], future: [] }), 'Issue de 2 opérations · Pas transformée depuis');
     const lot = { kind: 'Division', dateLabel: '18/04/1989', mothers: ['AW0089'], daughters: ['AW0399', 'AW0400', 'AW0401'] };
-    assert.equal(lotShortText(lot, 'origin'), 'Origine : Division le 18/04/1989, de AW 89');
-    assert.equal(lotShortText(lot, 'future'), 'Devenir : Division le 18/04/1989, en AW 399, AW 400, AW 401');
-    assert.equal(lotShortText(lot, 'future', 2), 'Devenir : Division le 18/04/1989, en AW 399, AW 400 et 1 autre(s)');
-    assert.equal(lotShortText({ kind: 'Disparition', dateLabel: '19/01/1994', mothers: ['AW0089'], daughters: [] }, 'future'), 'Devenir : Disparition le 19/01/1994');
+    assert.equal(lotShortText(lot, 'origin'), 'Issue de : division le 18/04/1989, de AW 89');
+    assert.equal(lotShortText(lot, 'future'), 'Transformée par : division le 18/04/1989, en AW 399, AW 400, AW 401');
+    assert.equal(lotShortText(lot, 'future', 2), 'Transformée par : division le 18/04/1989, en AW 399, AW 400 et 1 autre(s)');
+    assert.equal(lotShortText({ kind: 'Disparition', dateLabel: '19/01/1994', mothers: ['AW0089'], daughters: [] }, 'future'), 'Transformée par : disparition le 19/01/1994');
+});
+
+await test('summaryLines : opérations lisibles sans cliquer tant qu\'elles sont peu nombreuses', () => {
+    const lot = { kind: 'Division', dateLabel: '16/09/2014', mothers: ['BI0457'], daughters: ['BI0498'] };
+    assert.deepEqual(summaryLines({ origin: [lot], future: [] }),
+        { inline: true, lines: ['Issue de : division le 16/09/2014, de BI 457', 'Pas transformée depuis'] });
+    assert.deepEqual(summaryLines({ origin: [], future: [lot] }).lines,
+        ['Origine inconnue', 'Transformée par : division le 16/09/2014, en BI 498']);
+    assert.equal(summaryLines({ origin: [lot, lot], future: [lot] }).inline, true, 'trois opérations : encore affichées');
+    assert.equal(summaryLines({ origin: [lot, lot], future: [lot, lot] }).inline, false, 'quatre : repli');
 });
 
 await test('viewBoxOf : zone vue à l\'échelle', () => {
