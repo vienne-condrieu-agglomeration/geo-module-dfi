@@ -212,16 +212,19 @@ angular
                 '    <span class="geo-dfi-toolbar-icon">' + _ICONS.graphHub + '</span>',
                 '    <span class="geo-dfi-title">{{ title }}</span>',
                 '    <div class="geo-dfi-bar-actions">',
-                '      <button type="button" class="geo-dfi-iconbtn geo-dfi-locate" ng-class="{\'geo-dfi-iconbtn--on\': state.located}"',
-                '              ng-if="locateEnabled && state.result" ng-click="toggleLocation()" ng-disabled="state.locating && !state.located"',
-                '              aria-pressed="{{ state.located ? \'true\' : \'false\' }}"',
-                '              title="{{ state.located ? \'Effacer le repérage de la carte\' : \'Localiser la parcelle sur la carte\' }}"',
-                '              aria-label="{{ state.located ? \'Effacer le repérage de la carte\' : \'Localiser la parcelle sur la carte\' }}">',
-                '        <span ng-if="!state.located">' + _ICONS.mapPin + '</span>',
-                '        <span ng-if="state.located">' + _ICONS.mapPinOff + '</span>',
+                '      <button type="button" class="geo-dfi-iconbtn geo-dfi-locate" ng-class="{\'geo-dfi-iconbtn--on\': state.locatedMode === \'parcel\'}"',
+                '              ng-if="locateEnabled && state.result" ng-click="toggleLocation()" ng-disabled="state.locating"',
+                '              aria-pressed="{{ state.locatedMode === \'parcel\' ? \'true\' : \'false\' }}"',
+                '              title="{{ state.locatedMode === \'parcel\' ? \'Effacer le repérage de la carte\' : \'Localiser la parcelle sur la carte\' }}"',
+                '              aria-label="{{ state.locatedMode === \'parcel\' ? \'Effacer le repérage de la carte\' : \'Localiser la parcelle sur la carte\' }}">',
+                '        <span ng-if="state.locatedMode !== \'parcel\'">' + _ICONS.mapPin + '</span>',
+                '        <span ng-if="state.locatedMode === \'parcel\'">' + _ICONS.mapPinOff + '</span>',
                 '      </button>',
-                '      <button type="button" class="geo-dfi-iconbtn geo-dfi-locate-all" ng-if="locateEnabled && state.result.hasHistory" ng-click="locateAll()"',
-                '              ng-disabled="state.locating" title="Localiser toute la filiation sur la carte" aria-label="Localiser toute la filiation sur la carte">' + _ICONS.map + '</button>',
+                '      <button type="button" class="geo-dfi-iconbtn geo-dfi-locate-all" ng-class="{\'geo-dfi-iconbtn--on\': state.locatedMode === \'all\' || state.locatingAll}"',
+                '              ng-if="locateEnabled && state.result.hasHistory" ng-click="toggleLocateAll()" ng-disabled="state.locating"',
+                '              aria-pressed="{{ state.locatedMode === \'all\' ? \'true\' : \'false\' }}"',
+                '              title="{{ state.locatedMode === \'all\' ? \'Effacer la filiation de la carte\' : \'Localiser toute la filiation sur la carte\' }}"',
+                '              aria-label="{{ state.locatedMode === \'all\' ? \'Effacer la filiation de la carte\' : \'Localiser toute la filiation sur la carte\' }}">' + _ICONS.map + '</button>',
                 '      <button type="button" class="geo-dfi-iconbtn" ng-click="openChangelog()" title="{{ changelogTitle }}" aria-label="Nouveautés du module">',
                 '        ' + _ICONS.sparkles,
                 '        <i class="geo-dfi-dot-new" ng-if="changelogNew()"></i>',
@@ -361,7 +364,7 @@ angular
                 $scope.state     = {
                     idu: '', insee: '', section: '', numberText: '', listLoading: false,
                     loading: false, error: '', result: null, selected: null,
-                    locating: false, locateMessage: '', located: false, mapSummary: null, searchOpen: false
+                    locating: false, locatingAll: false, locateMessage: '', locatedMode: null, mapSummary: null, searchOpen: false
                 };
                 var _graph = null;
                 var _layout = null;
@@ -398,7 +401,9 @@ angular
 
                 $scope.search = function () {
                     var st = $scope.state;
-                    st.error = ''; st.locateMessage = ''; st.selected = null; st.mapSummary = null;
+                    // Le repérage appartient à la parcelle affichée : sans cela, les boutons resteraient actifs sur la suivante
+                    $scope.clearLocation();
+                    st.error = ''; st.selected = null;
                     var parsed = dfi.parseIdu(st.idu);
                     if (!parsed) {
                         st.result = null;
@@ -574,7 +579,8 @@ angular
                 $scope.locate = function (p) {
                     var st = $scope.state;
                     var label = p.label || dfi.parcelLabel(p.key);
-                    st.locating = true; st.locateMessage = ''; st.mapSummary = null;
+                    // La légende de la filiation reste affichée tant que son repérage n'est pas remplacé
+                    st.locating = true; st.locateMessage = '';
                     dfi.loadParcel(_fetch, _cadastreUrl, p).then(function (res) {
                         _apply(function () {
                             st.locating = false;
@@ -588,7 +594,7 @@ angular
                                     st.locateMessage = "Parcelle trouvée, mais la carte n'a pas pu être déplacée (voir la console du navigateur).";
                                     return;
                                 }
-                                st.located = true;
+                                st.locatedMode = 'parcel'; st.mapSummary = null;
                                 st.locateMessage = [label, res.commune, dfi.formatArea(res.contenance)].filter(Boolean).join(' · ') + ' : repérée sur la carte.';
                             });
                         });
@@ -605,13 +611,13 @@ angular
                     if (!_graph) { return; }
                     var targets = dfi.mapTargets(_graph, _lookup, dfi.MAX_MAP_PARCELS);
                     st.mapSummary = null;
-                    st.locating = true;
+                    st.locating = true; st.locatingAll = true;
                     st.locateMessage = 'Recherche des contours de ' + targets.query.length + ' parcelle(s) au cadastre actuel…';
                     dfi.mapLimit(targets.query, dfi.MAP_CONCURRENCY, function (q) {
                         return dfi.loadParcel(_fetch, _cadastreUrl, _parcelInfo(q.key));
                     }).then(function (results) {
                         _apply(function () {
-                            st.locating = false;
+                            st.locating = false; st.locatingAll = false;
                             var found = [];
                             var summary = { gone: targets.gone.map(dfi.parcelLabel), missing: [], failed: 0,
                                             skipped: targets.skipped, max: dfi.MAX_MAP_PARCELS };
@@ -631,7 +637,7 @@ angular
                                     st.locateMessage = "Parcelles trouvées, mais la carte n'a pas pu être déplacée (voir la console du navigateur).";
                                     return;
                                 }
-                                st.located = true;
+                                st.locatedMode = 'all';
                                 st.locateMessage = found.length + ' parcelle(s) de la filiation repérée(s) sur la carte.';
                             });
                         });
@@ -646,16 +652,20 @@ angular
                     $timeout(fn, wait);
                 }
 
-                // Bouton à bascule de la barre d'outils : actif dès qu'un repérage est affiché, d'où qu'il vienne
-                // (parcelle, filiation entière ou fiche d'un nœud) ; un clic l'efface alors en entier.
+                // Deux boutons à bascule, un seul actif à la fois : l'épingle pour une parcelle seule (cherchée ou fiche d'un nœud),
+                // la carte pour la filiation. Un clic sur le bouton actif efface le repérage, sur l'autre le remplace.
                 $scope.toggleLocation = function () {
-                    if ($scope.state.located) { $scope.clearLocation(); }
+                    if ($scope.state.locatedMode === 'parcel') { $scope.clearLocation(); }
                     else if ($scope.state.result) { $scope.locate($scope.state.result.parsed); }
+                };
+                $scope.toggleLocateAll = function () {
+                    if ($scope.state.locatedMode === 'all') { $scope.clearLocation(); }
+                    else { $scope.locateAll(); }
                 };
 
                 $scope.clearLocation = function () {
                     _clearHighlight();
-                    $scope.state.located = false; $scope.state.locateMessage = ''; $scope.state.mapSummary = null;
+                    $scope.state.locatedMode = null; $scope.state.locateMessage = ''; $scope.state.mapSummary = null;
                 };
 
                 // Plein écran : le panneau prend toute la largeur ; les boutons de la carte (qui se replient et chevauchent
@@ -939,9 +949,12 @@ angular
             var features = [];
             items.forEach(function (it) {
                 var c = _MAP_COLORS[it.role] || _MAP_COLORS.searched;
+                var width = it.role === 'searched' ? 3 : 2;
+                // Contour à l'intérieur du polygone : deux parcelles contiguës ne se masquent pas l'une l'autre.
                 var style = new ol.style.Style({
-                    stroke: new ol.style.Stroke({ color: c.stroke, width: it.role === 'searched' ? 3 : 2 }),
-                    fill: new ol.style.Fill({ color: c.fill })
+                    renderer: function (coords, state) {
+                        dfi.drawInsetPolygon(state.context, coords, { fill: c.fill, stroke: c.stroke, width: width * state.pixelRatio });
+                    }
                 });
                 reader.readFeatures(it.feature, options).forEach(function (f) { f.setStyle(style); features.push(f); });
             });
@@ -1200,7 +1213,7 @@ angular
                     + 'tout le graphe. Au clavier : flèches, +, − et 0.', 'zoom'),
                 _locateEnabled ? step('locate-all', _inPanel('.geo-dfi-locate-all'), 'Voir sur la carte',
                     'Ce bouton dessine sur la carte les parcelles de la filiation qui existent encore au cadastre, avec une légende. '
-                    + 'L\'épingle, à côté, localise la seule parcelle cherchée.') : null,
+                    + 'L\'épingle, à côté, localise la seule parcelle cherchée. Le bouton actif montre ce qui est repéré ; un second clic l\'efface.') : null,
                 step('help', _inPanel('.geo-dfi-help-btn'), 'C\'est tout !',
                     'Le plein écran agrandit le panneau pour les grands graphes, l\'étincelle ouvre les nouveautés du module, '
                     + 'et ce bouton relance la visite à tout moment.', null,

@@ -416,6 +416,33 @@ export function summaryLines(summary) {
     };
 }
 
+/**
+ * Dessine un polygone (ou multipolygone) sur le canevas, contour tracé à l'intérieur : le tracé est deux fois plus large et
+ * coupé au polygone, si bien que deux parcelles contiguës gardent chacune leur contour entier, côte à côte. `coords` : anneaux
+ * en pixels du canevas, tels que les passe le `renderer` d'un style OpenLayers. `style` : { fill, stroke, width }.
+ */
+export function drawInsetPolygon(ctx, coords, style) {
+    var polygons = Array.isArray(coords[0][0][0]) ? coords : [coords];
+    polygons.forEach(function (rings) {
+        ctx.save();
+        ctx.beginPath();
+        rings.forEach(function (ring) {
+            ring.forEach(function (p, i) {
+                if (i === 0) { ctx.moveTo(p[0], p[1]); } else { ctx.lineTo(p[0], p[1]); }
+            });
+            ctx.closePath();
+        });
+        ctx.fillStyle = style.fill;
+        ctx.fill('evenodd');
+        ctx.clip('evenodd');
+        ctx.strokeStyle = style.stroke;
+        ctx.lineWidth = style.width * 2;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.restore();
+    });
+}
+
 // ─── Mise en page ────────────────────────────────────────────────────────────────────────────────────
 
 /**

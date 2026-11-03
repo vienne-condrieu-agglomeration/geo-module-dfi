@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     SUPPORTED_FORMAT, DfiError, parseIdu, parcelKey, splitKey, parcelLabel, formatDate, dataUrl, loadJson,
     checkIndex, loadIndex, loadCommune, buildLookup, describeLot, buildGraph, parcelSummary, layoutGraph,
-    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, lineageOf, nodeTooltip,
+    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, drawInsetPolygon, lineageOf, nodeTooltip,
     DEFAULT_CADASTRE_URL, cadastreUrl, geometryBbox, expandBbox, extentForVisible, fitExtent, parseCadastre, loadParcel, formatArea,
     communeOptions, sectionOptions, numberOptions, normalizeNumber, selectionIdu, mapTargets, mapLimit, mergeBbox
 } from '../src/js/dfi-data.js';
@@ -262,6 +262,25 @@ await test('summaryLines : opérations lisibles sans cliquer tant qu\'elles sont
         ['Origine inconnue', 'Transformée par : division le 16/09/2014, en BI 498']);
     assert.equal(summaryLines({ origin: [lot, lot], future: [lot] }).inline, true, 'trois opérations : encore affichées');
     assert.equal(summaryLines({ origin: [lot, lot], future: [lot, lot] }).inline, false, 'quatre : repli');
+});
+
+await test('drawInsetPolygon : contour coupé au polygone, multipolygone et trou', () => {
+    const calls = [];
+    const ctx = new Proxy({}, {
+        get: (o, k) => (k in o ? o[k] : (...a) => calls.push([k, ...a])),
+        set: (o, k, v) => { o[k] = v; return true; }
+    });
+    const ring = [[0, 0], [10, 0], [10, 10], [0, 0]];
+    const hole = [[2, 1], [3, 1], [3, 2], [2, 1]];
+    drawInsetPolygon(ctx, [ring, hole], { fill: 'f', stroke: 's', width: 3 });
+    assert.equal(ctx.lineWidth, 6, 'la moitié extérieure du tracé est coupée : largeur doublée');
+    assert.equal(calls.filter((c) => c[0] === 'moveTo').length, 2, 'un sous-chemin par anneau');
+    assert.deepEqual(calls.map((c) => c[0]).filter((k) => ['save', 'fill', 'clip', 'stroke', 'restore'].includes(k)),
+        ['save', 'fill', 'clip', 'stroke', 'restore'], 'remplissage, puis découpe avant le tracé');
+    assert.deepEqual(calls.find((c) => c[0] === 'clip'), ['clip', 'evenodd'], 'le trou reste hors de la découpe');
+    calls.length = 0;
+    drawInsetPolygon(ctx, [[ring], [ring]], { fill: 'f', stroke: 's', width: 2 });
+    assert.equal(calls.filter((c) => c[0] === 'clip').length, 2, 'multipolygone : une découpe par polygone');
 });
 
 await test('viewBoxOf : zone vue à l\'échelle', () => {

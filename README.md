@@ -63,11 +63,11 @@ déposé plusieurs fois (avertissement dans la console).
 Le bouton « Localiser sur la carte » (sur la parcelle cherchée et sur chaque parcelle du graphe) interroge l'**API Carto Cadastre de l'IGN**
 (`https://apicarto.ign.fr/api/cadastre/parcelle`, service public sans clé, cadastre Etalab) avec le code INSEE, la section, le numéro et le
 préfixe de section de la parcelle. Il zoome sur la parcelle (par la vue OpenLayers native, avec un recouvrement du panneau mesuré sur la page), la centre dans la partie de la carte que le panneau ne recouvre pas, et dessine son
-contour sur une couche temporaire (un second clic sur le même bouton, ou la fermeture du panneau, la retire).
+contour, tracé à l'intérieur de la parcelle, sur une couche temporaire (un second clic sur l'épingle, l'affichage d'une autre parcelle ou la fermeture du panneau la retire).
 
 Le bouton « Localiser toute la filiation sur la carte » (sous la synthèse) dessine en une fois les parcelles du graphe qui existent encore
 au cadastre actuel, colorées selon leur place : la parcelle cherchée (orange), ses descendantes (vert), les autres parcelles liées (bleu :
-sœurs, parcelles d'origine encore existantes). Une légende dans le panneau liste aussi les parcelles qui ne peuvent pas être dessinées.
+sœurs, parcelles d'origine encore existantes). Le bouton reste actif tant que ce repérage est affiché, et un second clic l'efface. Une légende dans le panneau liste aussi les parcelles qui ne peuvent pas être dessinées.
 Les parcelles remplacées (mères d'une opération) ne sont pas demandées au service : elles n'y ont plus de contour. Au plus 40 parcelles sont
 demandées, 3 à la fois.
 

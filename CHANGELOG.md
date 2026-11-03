@@ -21,7 +21,9 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 - **Fiche d'un nœud** sous le graphe, qui se réduit pour lui laisser la place : elle défile seule et se ferme d'une croix
 - « Localiser toute la filiation » devient un bouton de la barre d'outils
 - **Synthèse en langage courant et lisible d'emblée** : « Issue de : division le 16/09/2014, de BI 457 » remplace « Origine / Devenir », sans clic jusqu'à trois opérations ; au-delà, elle se replie sur leur nombre et se déplie pour le détail
-- **Un seul bouton pour localiser et effacer** : l'épingle de la barre d'outils localise la parcelle ; une fois un repérage affiché (quelle que soit son origine), elle devient active et un second clic l'efface
+- **Boutons de repérage à bascule** : l'épingle (une parcelle) et « Localiser toute la filiation » s'affichent actifs quand leur repérage est sur la carte ; un second clic l'efface, un clic sur l'autre le remplace
+- **Contours dessinés à l'intérieur des parcelles** : deux parcelles contiguës gardent chacune leur contour bien visible
+- Afficher une autre parcelle efface le repérage de la précédente
 
 ### Corrigé
 
