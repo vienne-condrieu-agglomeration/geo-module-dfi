@@ -23,6 +23,7 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 - **Synthèse en langage courant et lisible d'emblée** : « Issue de : division le 16/09/2014, de BI 457 » remplace « Origine / Devenir », sans clic jusqu'à trois opérations ; au-delà, elle se replie sur leur nombre et se déplie pour le détail
 - **Boutons de repérage à bascule** : l'épingle (une parcelle) et « Localiser toute la filiation » s'affichent actifs quand leur repérage est sur la carte ; un second clic l'efface, un clic sur l'autre le remplace
 - **Contours dessinés à l'intérieur des parcelles** : deux parcelles contiguës gardent chacune leur contour bien visible
+- **Libellé des parcelles sur la carte** (« BI 498 »), la parcelle cherchée en gras ; il apparaît en zoomant quand la parcelle est trop petite pour le contenir
 - Afficher une autre parcelle efface le repérage de la précédente
 
 ### Corrigé

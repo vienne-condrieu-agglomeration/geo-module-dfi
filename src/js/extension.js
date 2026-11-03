@@ -592,7 +592,7 @@ angular
                                 return;
                             }
                             _whenMapVisible(function () {
-                                if (!_showOnMap([{ feature: res.feature, bbox: res.bbox, role: 'searched' }])) {
+                                if (!_showOnMap([{ feature: res.feature, bbox: res.bbox, role: 'searched', label: label }])) {
                                     st.locateWarn = true;
                                     st.locateMessage = "Parcelle trouvée, mais la carte n'a pas pu être déplacée (voir la console du navigateur).";
                                     return;
@@ -628,7 +628,7 @@ angular
                             results.forEach(function (r, i) {
                                 var q = targets.query[i];
                                 if (r.error) { summary.failed++; console.error('[geo-dfi] localisation de ' + q.key + ' :', r.error); }
-                                else if (r.value) { found.push({ feature: r.value.feature, bbox: r.value.bbox, role: q.role }); }
+                                else if (r.value) { found.push({ feature: r.value.feature, bbox: r.value.bbox, role: q.role, label: dfi.parcelLabel(q.key) }); }
                                 else { summary.missing.push(dfi.parcelLabel(q.key)); }
                             });
                             st.mapSummary = summary;
@@ -945,7 +945,7 @@ angular
         };
 
         // Contours des parcelles sur la carte native (OpenLayers fourni par GEO, voir module-development.md §1).
-        // `items` : [{ feature, role }], role = searched | descendant | related.
+        // `items` : [{ feature, role, label }], role = searched | descendant | related.
         function _highlight(items) {
             _clearHighlight();
             var ol = window.ol;
@@ -962,10 +962,20 @@ angular
                         dfi.drawInsetPolygon(state.context, coords, { fill: c.fill, stroke: c.stroke, width: width * state.pixelRatio });
                     }
                 });
-                reader.readFeatures(it.feature, options).forEach(function (f) { f.setStyle(style); features.push(f); });
+                // Sans `overflow`, OpenLayers masque l'étiquette qui ne tient pas dans le polygone : elle apparaît en zoomant.
+                var labelStyle = new ol.style.Style({
+                    text: new ol.style.Text({
+                        text: it.label,
+                        font: (it.role === 'searched' ? 'bold ' : '') + '12px sans-serif',
+                        fill: new ol.style.Fill({ color: '#1a1a1a' }),
+                        stroke: new ol.style.Stroke({ color: '#fff', width: 3 })
+                    })
+                });
+                reader.readFeatures(it.feature, options).forEach(function (f) { f.setStyle([style, labelStyle]); features.push(f); });
             });
             var layer = new ol.layer.Vector({
                 source: new ol.source.Vector({ features: features }),
+                declutter: true,   // deux étiquettes qui se chevauchent : une seule s'affiche
                 zIndex: 1000   // au-dessus des fonds de plan et des couches thématiques
             });
             olMap.addLayer(layer);

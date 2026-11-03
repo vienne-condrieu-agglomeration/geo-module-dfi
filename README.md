@@ -67,7 +67,7 @@ contour, tracé à l'intérieur de la parcelle, sur une couche temporaire (un se
 
 Le bouton « Localiser toute la filiation sur la carte » (sous la synthèse) dessine en une fois les parcelles du graphe qui existent encore
 au cadastre actuel, colorées selon leur place : la parcelle cherchée (orange), ses descendantes (vert), les autres parcelles liées (bleu :
-sœurs, parcelles d'origine encore existantes). Le bouton reste actif tant que ce repérage est affiché, et un second clic l'efface. Une légende dans le panneau liste aussi les parcelles qui ne peuvent pas être dessinées.
+sœurs, parcelles d'origine encore existantes). Chaque parcelle porte son libellé si elle est assez grande pour le contenir à ce zoom. Le bouton reste actif tant que ce repérage est affiché, et un second clic l'efface. Une légende dans le panneau liste aussi les parcelles qui ne peuvent pas être dessinées.
 Les parcelles remplacées (mères d'une opération) ne sont pas demandées au service : elles n'y ont plus de contour. Au plus 40 parcelles sont
 demandées, 3 à la fois.
 
