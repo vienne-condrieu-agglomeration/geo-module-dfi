@@ -40,7 +40,7 @@ ne sont pas dans le bundle.
   (<https://lucide.dev/icons/zoom-in>, <https://lucide.dev/icons/zoom-out>, <https://lucide.dev/icons/scan>) ; bouton de la visite guidée :
   « circle-question-mark » (<https://lucide.dev/icons/circle-question-mark>). Source : <https://github.com/lucide-icons/lucide>
   (version 1.61.0 des icônes). Aucune modification des tracés.
-- L'image d'aperçu `src/preview.png` reprend « graph-hub », dessinée en blanc sur un hexagone bleu (même style que l'aperçu du gabarit).
+- L'image d'aperçu `src/preview.png` reprend « graph-hub », dessinée en noir sur fond transparent.
 - Licence : **ISC** pour Lucide, et **MIT** pour les icônes dérivées du projet Feather, dont « map-pin », « map », « x », « copy », « check », « download », « maximize », « minimize », « zoom-in », « zoom-out » et « circle-question-mark ». Textes :
 
     ISC License
