@@ -30,6 +30,10 @@ de serveur ni de base de données. Il lit d'abord `index.json` et **refuse un fo
 
 **Limites** : l'historique informatisé commence vers 1988-1990 ; les aménagements fonciers ruraux (remembrements) n'y figurent pas.
 
+## Export
+
+Au-dessus du graphe, deux boutons téléchargent le **graphe entier** en SVG ou en PNG (`filiation_<IDU>.svg`), avec le titre de la parcelle et la source des données. L'image ne reprend ni le zoom, ni la sélection, ni les badges de l'écran. Un bouton à côté de l'IDU le copie.
+
 ## Réglages du Générateur
 
 | Réglage | Rôle |

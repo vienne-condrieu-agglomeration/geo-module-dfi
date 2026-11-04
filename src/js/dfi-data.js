@@ -479,6 +479,57 @@ export function drawInsetPolygon(ctx, coords, style) {
     });
 }
 
+// ─── Export du graphe ────────────────────────────────────────────────────────────────────────────────
+
+function _xml(text) {
+    return String(text == null ? '' : text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Nom du fichier exporté, par exemple « filiation_38544000BI0498.svg ». */
+export function exportFileName(idu, extension) {
+    return 'filiation_' + String(idu).replace(/[^0-9A-Za-z]/g, '') + '.' + extension;
+}
+
+/**
+ * Graphe entier en SVG autonome (styles en attributs, mêmes couleurs que le panneau), sans le zoom, la sélection ni les badges
+ * de l'écran : un document à joindre à un dossier, avec son titre et sa source (attribution de la Licence Ouverte).
+ * `options` : { searchedId, title, footer }. Retourne { svg, width, height }.
+ */
+export function graphToSvg(layout, options) {
+    var o = options || {};
+    var headH = 32;
+    var footH = 24;
+    var width = Math.max(layout.width, 640);
+    var height = layout.height + headH + footH;
+    var dx = Math.round((width - layout.width) / 2);
+    var parts = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '" font-family="sans-serif">',
+        '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+            + '<path d="M0,0 L10,5 L0,10 z" fill="#8a96a8"/></marker></defs>',
+        '<rect width="' + width + '" height="' + height + '" fill="#fff"/>',
+        '<text x="12" y="21" font-size="14" font-weight="700" fill="#1b2b45">' + _xml(o.title) + '</text>',
+        '<g transform="translate(' + dx + ',' + headH + ')">'
+    ];
+    layout.paths.forEach(function (p) {
+        parts.push('<path d="' + _xml(p.d) + '" fill="none" stroke="#8a96a8" stroke-width="1.4" marker-end="url(#arrow)"/>');
+    });
+    layout.nodes.forEach(function (n) {
+        var searched = n.id === o.searchedId;
+        var lot = n.type === 'lot';
+        var leaf = n.type === 'parcel' && !n.explored && !searched;
+        parts.push('<g transform="translate(' + n.x + ',' + n.y + ')">'
+            + '<rect width="' + n.w + '" height="' + n.h + '" rx="' + (lot ? 14 : 4) + '"'
+            + ' fill="' + (searched ? '#ffe2b8' : lot ? '#f4f1e8' : leaf ? '#f5f7fa' : '#e8f0fe') + '"'
+            + ' stroke="' + (searched ? '#c76a00' : lot ? '#a08a4a' : '#4a6fa5') + '"'
+            + ' stroke-width="' + (searched ? 2.2 : 1.2) + '"' + (leaf ? ' stroke-dasharray="3 2"' : '') + '/>'
+            + '<text x="' + (n.w / 2) + '" y="' + (n.h / 2 + 4) + '" text-anchor="middle" font-size="12" fill="#1b2b45">' + _xml(n.label) + '</text></g>');
+    });
+    parts.push('</g>');
+    parts.push('<text x="12" y="' + (height - 8) + '" font-size="10" fill="#555">' + _xml(o.footer) + '</text>');
+    parts.push('</svg>');
+    return { svg: parts.join(''), width: width, height: height };
+}
+
 // ─── Mise en page ────────────────────────────────────────────────────────────────────────────────────
 
 /**

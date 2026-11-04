@@ -11,6 +11,14 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+## [0.7.0] — 2026-11-04
+
+### Ajouté
+
+- **Télécharger le graphe** en SVG ou en PNG, entier et avec sa source, pour le joindre à un dossier d'instruction
+- **Copier l'IDU** de la parcelle en un clic
+- **Retrouver sa dernière filiation** : après une interrogation au clic sur la carte, le module rouvert affiche la même parcelle, avec ses opérations dépliées, sa fiche ouverte et ses contours, sans déplacer la carte. Un rechargement de la page repart d'un module vide
+
 ## [0.6.0] — 2026-11-03
 
 ### Ajouté

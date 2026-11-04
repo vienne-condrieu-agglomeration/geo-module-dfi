@@ -35,13 +35,13 @@ ne sont pas dans le bundle.
 ## Icônes Lucide
 
 - Icônes copiées en SVG dans `src/js/extension.js` (onglet et barre d'outils du panneau) : « graph-hub » (<https://lucide.dev/icons/graph-hub>),
-  « mouse-pointer-click » (<https://lucide.dev/icons/mouse-pointer-click>), « map-pin » (<https://lucide.dev/icons/map-pin>), « map-pin-off » (<https://lucide.dev/icons/map-pin-off>), « map » (<https://lucide.dev/icons/map>), « chevrons-up-down » (<https://lucide.dev/icons/chevrons-up-down>), « chevrons-down-up » (<https://lucide.dev/icons/chevrons-down-up>), « x » (<https://lucide.dev/icons/x>), « sparkles » (<https://lucide.dev/icons/sparkles>), « maximize » et « minimize »
+  « mouse-pointer-click » (<https://lucide.dev/icons/mouse-pointer-click>), « map-pin » (<https://lucide.dev/icons/map-pin>), « map-pin-off » (<https://lucide.dev/icons/map-pin-off>), « copy » (<https://lucide.dev/icons/copy>), « check » (<https://lucide.dev/icons/check>), « download » (<https://lucide.dev/icons/download>), « map » (<https://lucide.dev/icons/map>), « chevrons-up-down » (<https://lucide.dev/icons/chevrons-up-down>), « chevrons-down-up » (<https://lucide.dev/icons/chevrons-down-up>), « x » (<https://lucide.dev/icons/x>), « sparkles » (<https://lucide.dev/icons/sparkles>), « maximize » et « minimize »
   (<https://lucide.dev/icons/maximize>, <https://lucide.dev/icons/minimize>) ; boutons de zoom du graphe : « zoom-in », « zoom-out » et « scan »
   (<https://lucide.dev/icons/zoom-in>, <https://lucide.dev/icons/zoom-out>, <https://lucide.dev/icons/scan>) ; bouton de la visite guidée :
   « circle-question-mark » (<https://lucide.dev/icons/circle-question-mark>). Source : <https://github.com/lucide-icons/lucide>
   (version 1.61.0 des icônes). Aucune modification des tracés.
 - L'image d'aperçu `src/preview.png` reprend « graph-hub », dessinée en blanc sur un hexagone bleu (même style que l'aperçu du gabarit).
-- Licence : **ISC** pour Lucide, et **MIT** pour les icônes dérivées du projet Feather, dont « map-pin », « map », « x », « maximize », « minimize », « zoom-in », « zoom-out » et « circle-question-mark ». Textes :
+- Licence : **ISC** pour Lucide, et **MIT** pour les icônes dérivées du projet Feather, dont « map-pin », « map », « x », « copy », « check », « download », « maximize », « minimize », « zoom-in », « zoom-out » et « circle-question-mark ». Textes :
 
     ISC License
 

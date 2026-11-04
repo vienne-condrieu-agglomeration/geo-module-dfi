@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     SUPPORTED_FORMAT, DfiError, parseIdu, parcelKey, splitKey, parcelLabel, formatDate, dataUrl, loadJson,
     checkIndex, loadIndex, loadCommune, buildLookup, describeLot, buildGraph, parcelSummary, layoutGraph,
-    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, drawInsetPolygon, parcelAtUrl, loadParcelAt, expandTip, parseRecent, pushRecent, lineageOf, nodeTooltip,
+    fitView, clampView, zoomView, viewBoxOf, revealView, panelHeight, summaryHeadline, lotShortText, summaryLines, drawInsetPolygon, parcelAtUrl, loadParcelAt, expandTip, parseRecent, pushRecent, graphToSvg, exportFileName, lineageOf, nodeTooltip,
     DEFAULT_CADASTRE_URL, cadastreUrl, geometryBbox, expandBbox, extentForVisible, fitExtent, parseCadastre, loadParcel, formatArea,
     communeOptions, sectionOptions, numberOptions, normalizeNumber, selectionIdu, mapTargets, mapLimit, mergeBbox
 } from '../src/js/dfi-data.js';
@@ -184,6 +184,18 @@ await test('parseRecent et pushRecent : dernières parcelles', () => {
     assert.deepEqual(parseRecent('pas du json'), []);
     assert.deepEqual(parseRecent(null), []);
     assert.deepEqual(parseRecent('{"a":1}'), []);
+});
+await test('graphToSvg : graphe entier autonome, titre, source et échappement', () => {
+    const l = layoutGraph(buildGraph(lookup, 'AH0264'), (n) => (n.type === 'parcel' ? parcelLabel(n.key) : 'Division <&>'));
+    const e = graphToSvg(l, { searchedId: 'p:AH0264', title: 'Parcelle "A" & B', footer: 'Source : DGFiP' });
+    assert.ok(e.svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'));
+    assert.ok(e.svg.includes('Parcelle &quot;A&quot; &amp; B') && e.svg.includes('Division &lt;&amp;&gt;') && e.svg.includes('Source : DGFiP'));
+    assert.equal(e.svg.split('<rect').length - 2, l.nodes.length, 'un rectangle par nœud, plus le fond');
+    assert.equal(e.svg.split('marker-end').length - 1, l.paths.length, 'un trait par arête');
+    assert.equal((e.svg.match(/#ffe2b8/g) || []).length, 1, 'une seule parcelle cherchée');
+    assert.ok(!e.svg.includes('class='), 'aucune dépendance aux styles de la page');
+    assert.ok(e.width >= 640 && e.height > l.height);
+    assert.equal(exportFileName('38544000BI0498', 'svg'), 'filiation_38544000BI0498.svg');
 });
 await test('parcelSummary', () => {
     const s = parcelSummary(lookup, 'AH0264');

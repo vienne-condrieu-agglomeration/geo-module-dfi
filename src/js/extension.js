@@ -64,6 +64,10 @@ angular
                                 + '<path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'),
             minimize: _lucideSvg('<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/>'
                                 + '<path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>'),
+            // « copy », « check » et « download » (https://lucide.dev/icons/copy, …/check, …/download) : copier l'IDU, exporter le graphe
+            copy: _lucideSvg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
+            check: _lucideSvg('<path d="M20 6 9 17l-5-5"/>'),
+            download: _lucideSvg('<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>'),
             // « mouse-pointer-click » (https://lucide.dev/icons/mouse-pointer-click)
             mousePointerClick: _lucideSvg('<path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/>'
                 + '<path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/>'),
@@ -256,6 +260,11 @@ angular
                 '  <div class="geo-dfi-searchbar" ng-if="state.result">',
                 '    <span class="geo-dfi-parcel"><span ng-if="state.result.commune">{{ state.result.commune }} · </span>{{ state.result.label }}</span>',
                 '    <span class="geo-dfi-idu">{{ state.result.idu }}</span>',
+                '    <button type="button" class="geo-dfi-iconbtn geo-dfi-iconbtn--plain" ng-click="copyIdu()"',
+                '            title="{{ state.iduCopied ? \'IDU copié\' : \'Copier l\\\'IDU\' }}" aria-label="{{ state.iduCopied ? \'IDU copié\' : \'Copier l\\\'IDU\' }}">',
+                '      <span ng-if="!state.iduCopied">' + _ICONS.copy + '</span>',
+                '      <span ng-if="state.iduCopied">' + _ICONS.check + '</span>',
+                '    </button>',
                 '    <button type="button" class="geo-dfi-btn geo-dfi-btn--small" ng-click="toggleSearch()" ng-attr-aria-expanded="{{ state.searchOpen }}">',
                 '      {{ state.searchOpen ? \'Fermer\' : \'Modifier\' }}</button>',
                 '  </div>',
@@ -328,6 +337,10 @@ angular
                 '    <div class="geo-dfi-view">',
                 '    <div class="geo-dfi-graph-wrap">',
                 '      <div class="geo-dfi-graph" tabindex="-1"></div>',
+                '      <div class="geo-dfi-export" role="group" aria-label="Télécharger le graphe" ng-if="state.result.hasHistory">',
+                '        <button type="button" class="geo-dfi-export-btn" ng-click="exportGraph(\'svg\')" title="Télécharger le graphe entier en SVG (image modifiable)">' + _ICONS.download + 'SVG</button>',
+                '        <button type="button" class="geo-dfi-export-btn" ng-click="exportGraph(\'png\')" title="Télécharger le graphe entier en PNG (image)">' + _ICONS.download + 'PNG</button>',
+                '      </div>',
                 '      <div class="geo-dfi-zoom" role="group" aria-label="Zoom du graphe">',
                 '        <button type="button" class="geo-dfi-iconbtn" ng-click="zoomGraph(1)" title="Zoomer (molette, +)" aria-label="Zoomer">'
                     + _ICONS.zoomIn + '</button>',
@@ -480,6 +493,84 @@ angular
                 $scope.clearRecent = function () {
                     _recent = [];
                     try { window.localStorage.removeItem(_RECENT_KEY); } catch (e) { /* stockage indisponible */ }
+                };
+
+                // ── Export du graphe et copie de l'IDU ──────────────────────────────────────────────────────────────────
+                function _exportFailed(message, err) {
+                    console.error('[geo-dfi] ' + message + ' :', err);
+                    _apply(function () { $scope.state.locateWarn = true; $scope.state.locateMessage = message + ' (voir la console du navigateur).'; });
+                }
+
+                function _download(blob, name) {
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = name;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+                }
+
+                // Le SVG passe par une image puis un canevas : deux fois la taille pour la netteté, limitée à ce que les navigateurs acceptent
+                function _svgToPng(exported) {
+                    return new Promise(function (resolve, reject) {
+                        var scale = Math.min(2, 8000 / Math.max(exported.width, exported.height));
+                        var img = new Image();
+                        img.onload = function () {
+                            var canvas = document.createElement('canvas');
+                            canvas.width = Math.round(exported.width * scale);
+                            canvas.height = Math.round(exported.height * scale);
+                            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                            canvas.toBlob(function (blob) { if (blob) { resolve(blob); } else { reject(new Error('canevas vide')); } }, 'image/png');
+                        };
+                        img.onerror = function () { reject(new Error('image SVG illisible')); };
+                        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(exported.svg);
+                    });
+                }
+
+                $scope.exportGraph = function (format) {
+                    var r = $scope.state.result;
+                    var name = dfi.exportFileName(r.idu, format);
+                    var exported = dfi.graphToSvg(_layout, {
+                        searchedId: 'p:' + r.parsed.key,
+                        title: 'Filiation de la parcelle ' + (r.commune ? r.commune + ' · ' : '') + r.label + ' (' + r.idu + ')',
+                        footer: 'Source : DGFiP, Documents de filiation informatisés (DFI)' + (_source.dateLabel ? ', mise à jour du ' + _source.dateLabel : '') + ', Licence Ouverte 2.0.'
+                    });
+                    if (format === 'svg') {
+                        _download(new Blob([exported.svg], { type: 'image/svg+xml;charset=utf-8' }), name);
+                        return;
+                    }
+                    _svgToPng(exported).then(function (blob) { _download(blob, name); })
+                        .catch(function (err) { _exportFailed("L'image PNG n'a pas pu être créée", err); });
+                };
+
+                // Le presse-papiers moderne exige une page sécurisée (HTTPS) : repli sur l'ancienne commande pour les GEO en HTTP
+                function _copyText(text) {
+                    if (navigator.clipboard && window.isSecureContext) { return navigator.clipboard.writeText(text); }
+                    return new Promise(function (resolve, reject) {
+                        var area = document.createElement('textarea');
+                        area.value = text;
+                        area.style.position = 'fixed';
+                        area.style.opacity = '0';
+                        document.body.appendChild(area);
+                        area.select();
+                        var ok = false;
+                        try { ok = document.execCommand('copy'); } catch (e) { /* refusé par le navigateur */ }
+                        document.body.removeChild(area);
+                        if (ok) { resolve(); } else { reject(new Error('copie refusée')); }
+                    });
+                }
+
+                var _copiedTimer = null;
+                $scope.copyIdu = function () {
+                    _copyText($scope.state.result.idu).then(function () {
+                        _apply(function () {
+                            $scope.state.iduCopied = true;
+                            if (_copiedTimer) { $timeout.cancel(_copiedTimer); }
+                            _copiedTimer = $timeout(function () { $scope.state.iduCopied = false; }, 1500);
+                        });
+                    }).catch(function (err) { _exportFailed("L'IDU n'a pas pu être copié", err); });
                 };
 
                 // Graphe et mise en page de la parcelle, avec les lots dépliés
@@ -1528,6 +1619,10 @@ angular
                 '.geo-dfi-svg{display:block;}',
                 '.geo-dfi-zoom{position:absolute;top:6px;right:6px;display:flex;flex-direction:column;gap:4px;}',
                 '.geo-dfi-zoom .geo-dfi-iconbtn{width:28px;height:28px;}',
+                '.geo-dfi-export{position:absolute;top:6px;left:6px;display:flex;gap:4px;}',
+                '.geo-dfi-export-btn{display:flex;align-items:center;gap:3px;height:24px;padding:0 6px;border:1px solid #bbb;border-radius:4px;background:#fff;color:#27487a;font-size:11px;cursor:pointer;}',
+                '.geo-dfi-export-btn:hover{background:#eef2f8;}',
+                '.geo-dfi-export-btn .geo-dfi-icon{width:12px;height:12px;}',
                 '.geo-dfi-edge{fill:none;stroke:#8a96a8;stroke-width:1.4;}',
                 '.geo-dfi-arrowhead{fill:#8a96a8;}',
                 '.geo-dfi-node{cursor:pointer;outline:none;}',
