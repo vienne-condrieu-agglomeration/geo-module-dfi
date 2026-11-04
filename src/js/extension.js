@@ -39,11 +39,15 @@ angular
         var _cadastreUrl  = dfi.DEFAULT_CADASTRE_URL;
         var _markLayer    = null;      // couche OpenLayers du contour de la parcelle repérée
         var _markMap      = null;
+        var _markItems    = null;      // contours dessinés ([{ feature, role, label }]), redessinés à la réouverture du panneau
         var _panelEl      = null;      // élément du panneau, pour mesurer ce qu'il recouvre de la carte
         var _showTourOnStart = true;   // visite guidée à la première ouverture du panneau
         var _registered   = false;
         var _widgetId     = null;
         var _currentScope = null;
+        // Dernière filiation affichée, gardée hors du contrôleur : GEO détruit le panneau quand une interrogation au clic
+        // le remplace. Durée de vie : la page. { idu, expanded, selectedId, marks, located }
+        var _lastView     = null;
 
         // Données en mémoire pour la durée de la page : index, puis un index de parcelles par commune
         var _indexPromise = null;
@@ -414,7 +418,8 @@ angular
 
                 function _apply(fn) { $timeout(fn, 0); }   // les promesses natives sont hors du cycle Angular
 
-                $scope.search = function () {
+                // view : vue mémorisée à réafficher (réouverture du panneau), absente pour une recherche de l'utilisateur
+                $scope.search = function (view) {
                     var st = $scope.state;
                     _stopPicking();
                     var picked = _pickedParcel;
@@ -436,7 +441,7 @@ angular
                     }
                     st.loading = true; st.result = null;
                     _getIndex().then(function (index) { return _getLookup(index, parsed.insee); })
-                        .then(function (lookup) { _apply(function () { _show(lookup, parsed, picked); }); })
+                        .then(function (lookup) { _apply(function () { _show(lookup, parsed, picked, view); }); })
                         .catch(function (err) { _apply(function () { st.loading = false; st.error = _errorMessage(err, parsed); }); });
                 };
 
@@ -514,12 +519,12 @@ angular
                     }, 0);
                 }
 
-                function _show(lookup, parsed, picked) {
+                function _show(lookup, parsed, picked, view) {
                     var st = $scope.state;
                     _lookup = lookup;
                     st.loading = false;
                     _syncCascade(lookup, parsed);
-                    _expanded = {};
+                    _expanded = view ? view.expanded : {};
                     var graph = _buildLayout(parsed);
                     var summary = dfi.parcelSummary(lookup, parsed.key);
                     st.result = {
@@ -530,7 +535,15 @@ angular
                     st.searchOpen = false;
                     _rememberParcel(parsed);
                     _selectedId = 'p:' + parsed.key;
-                    $timeout(_draw, 0);   // le conteneur est créé par ng-if au prochain cycle
+                    // Vue mémorisée : le nœud qui avait sa fiche ouverte la retrouve (_select redessine le graphe)
+                    var node = view && view.selectedId && graph.nodes.filter(function (n) { return n.id === view.selectedId; })[0];
+                    if (node) { _select(node); }
+                    else { $timeout(_draw, 0); }   // le conteneur est créé par ng-if au prochain cycle
+                    // Repérage mémorisé : mêmes contours, sans nouvelle requête au cadastre ni déplacement de la carte
+                    if (view && view.marks) {
+                        try { _highlight(view.marks); Object.assign(st, view.located); }
+                        catch (err) { console.error('[geo-dfi] contours de la dernière filiation :', err); }
+                    }
                     if (picked) { _outlinePicked(picked, dfi.parcelLabel(parsed.key)); }
                     _tourNotify('search');
                 }
@@ -859,7 +872,16 @@ angular
                     $timeout(function () { if (_currentScope === $scope) { _startTour(); } }, 500);
                 }
 
+                // Réouverture du panneau : la dernière filiation revient telle qu'elle était, repérage sur la carte compris
+                if (_lastView) { $scope.state.idu = _lastView.idu; $scope.search(_lastView); }
+
                 $scope.$on('$destroy', function () {
+                    var st = $scope.state;
+                    // Avant _clearHighlight ci-dessous, qui efface les contours mémorisés
+                    _lastView = st.result ? {
+                        idu: st.result.idu, expanded: _expanded, selectedId: st.selected ? _selectedId : null, marks: _markItems,
+                        located: { locatedMode: st.locatedMode, locateMessage: st.locateMessage, locateWarn: st.locateWarn, mapSummary: st.mapSummary }
+                    } : null;
                     // Panneau fermé en pleine visite : on l'arrête sans rien mémoriser, elle reprendra à la prochaine ouverture
                     if (_tour && _tour.isActive()) { _tour.destroy(); }
                     if ($scope.isFullscreen) { _panelWidthPct = _panelWidthCfg; document.removeEventListener('keydown', _onEscape, true); }
@@ -1114,7 +1136,7 @@ angular
             if (_markLayer && _markMap) {
                 try { _markMap.removeLayer(_markLayer); } catch (err) { console.warn('[geo-dfi] retrait du contour impossible :', err); }
             }
-            _markLayer = null; _markMap = null;
+            _markLayer = null; _markMap = null; _markItems = null;
         }
 
         function _nativeMap() { return $injector.get('acfMapService').getMapViewImmediate().getNativeMap(); }
@@ -1163,7 +1185,7 @@ angular
                 zIndex: 1000   // au-dessus des fonds de plan et des couches thématiques
             });
             olMap.addLayer(layer);
-            _markLayer = layer; _markMap = olMap;
+            _markLayer = layer; _markMap = olMap; _markItems = items;
         }
 
         // Cadrage de la parcelle par la vue OpenLayers native. `setExtent` de GEO n'est pas utilisable ici : il applique ses propres
