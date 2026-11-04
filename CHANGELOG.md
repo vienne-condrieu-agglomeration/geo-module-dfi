@@ -11,6 +11,12 @@ la plus récente publiée doit être celle de `package.json` et de `src/plugin.g
 
 ## [Non publié]
 
+## [0.8.0] — 2026-11-04
+
+### Modifié
+
+- La **visite guidée** se propose de nouveau une fois, pour présenter le choix d'une parcelle sur la carte et le badge de dépliage des opérations
+
 ## [0.7.0] — 2026-11-04
 
 ### Ajouté

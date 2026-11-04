@@ -53,9 +53,9 @@ synthèse, la lecture du graphe et ses couleurs, le clic sur un nœud, le zoom, 
 
 Tant qu'elle n'a pas été vue, une **bulle sur l'onglet** du module le signale au chargement de l'application (« Plus tard » la ferme jusqu'au
 prochain chargement, « Ne plus afficher » la fait taire, ouvrir l'onglet la ferme). La visite démarre ensuite à la première ouverture du panneau ; « Terminer » ou la croix la mémorisent comme vue, « Ne plus afficher » aussi, dans le
-navigateur (clé `localStorage` `geo-dfi-tour`, valeur `v1:done` ou `v1:never`). Fermer le panneau en cours de visite n'enregistre rien.
-Pour la revoir d'elle-même : `localStorage.removeItem('geo-dfi-tour')` dans la console, puis recharger. Passer `_TOUR_VERSION` à `v2` dans
-`extension.js` la réaffiche une fois pour tout le monde après une évolution notable.
+navigateur (clé `localStorage` `geo-dfi-tour`, valeur `v2:done` ou `v2:never`). Fermer le panneau en cours de visite n'enregistre rien.
+Pour la revoir d'elle-même : `localStorage.removeItem('geo-dfi-tour')` dans la console, puis recharger. Augmenter `_TOUR_VERSION` (`v3`…) dans
+`extension.js` la réaffiche une fois pour tout le monde après une évolution notable, y compris après « Ne plus afficher ».
 
 Zones du gabarit : le module n'est proposé que pour la barre latérale droite (`widget.side.pro`, `widget.side`), jamais pour l'ensemble du gabarit
 (`global.pro`). Constaté sur GEO 4.5.0 : la zone « Lanceur de fonctionnalités » (bandeau de gauche) n'accepte pas le module, et un onglet de type

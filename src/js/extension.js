@@ -1346,11 +1346,11 @@ angular
         var _tour        = null;
         var _tourWaiting = null;   // geste attendu par l'étape affichée : 'search' | 'node' | 'zoom'
 
-        // État mémorisé dans le navigateur : '' (jamais vue), 'v1:done' (terminée ou fermée par la croix),
-        // 'v1:never' (ne plus afficher). Seuls les boutons l'écrivent : fermer le panneau en pleine visite
-        // n'enregistre rien. Passer _TOUR_VERSION à 'v2' réaffiche la visite une fois pour tout le monde.
+        // État mémorisé dans le navigateur : '' (jamais vue), 'v2:done' (terminée ou fermée par la croix),
+        // 'v2:never' (ne plus afficher). Seuls les boutons l'écrivent : fermer le panneau en pleine visite
+        // n'enregistre rien. Augmenter _TOUR_VERSION réaffiche la visite une fois pour tout le monde, y compris après « ne plus afficher ».
         var _TOUR_KEY     = 'geo-dfi-tour';
-        var _TOUR_VERSION = 'v1';
+        var _TOUR_VERSION = 'v2';
 
         function _tourPending() {
             if (!_showTourOnStart) { return false; }
